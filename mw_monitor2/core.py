@@ -350,10 +350,15 @@ class Process:
         '''
         Get the VAD overlapping the address
         '''
-        for vad in self.__vads:
-            if vad.get_start() <= addr and (vad.get_start() + vad.get_size()) > addr:
-                return vad
-        return None
+        return next(
+            (
+                vad
+                for vad in self.__vads
+                if vad.get_start() <= addr
+                and (vad.get_start() + vad.get_size()) > addr
+            ),
+            None,
+        )
 
     def add_injection(self, inj):
         global interproc_data
@@ -430,10 +435,11 @@ class Process:
             modules = [mod.DllBase for mod in task.get_load_modules()]
             stacks = []
             for thread in task.ThreadListHead.list_of_type("_ETHREAD", "ThreadListEntry"):
-                teb = obj.Object("_TEB",
-                                 offset=thread.Tcb.Teb,
-                                 vm=task.get_process_address_space())
-                if teb:
+                if teb := obj.Object(
+                    "_TEB",
+                    offset=thread.Tcb.Teb,
+                    vm=task.get_process_address_space(),
+                ):
                     stacks.append(teb.NtTib.StackBase)
             for vad in task.VadRoot.traverse():
                 if vad is not None:
@@ -462,11 +468,9 @@ class Process:
                         # even if the ControlArea is not NULL, it is only meaningful
                         # for shared (non private) memory sections.
                         if vad.VadFlags.PrivateMemory != 1 and control_area:
-                            if control_area:
-                                file_object = vad.FileObject
-                                if file_object:
-                                    fileNameWithDevice = file_object.file_name_with_device(
-                                    )
+                            if file_object := vad.FileObject:
+                                fileNameWithDevice = file_object.file_name_with_device(
+                                )
                     except AttributeError:
                         pass
 
@@ -489,9 +493,9 @@ class Process:
         if vad is None:
             self.update_vads()
             vad = self.get_overlapping_vad(addr_from)
-            if vad is None:
-                self.__other_calls.append((addr_from, addr_to, data))
-                return
+        if vad is None:
+            self.__other_calls.append((addr_from, addr_to, data))
+            return
         vad.add_call((addr_from, addr_to, data))
         self.__all_calls.append((addr_from, addr_to, data))
 
@@ -627,7 +631,7 @@ class Process:
                 out_str = "%16x(%16x)" % (smap.get_base(), smap.get_size())
 
             if smap.get_section().get_backing_file() is not None:
-                out_str += " %s" % (str(smap.get_section().get_backing_file()))
+                out_str += f" {str(smap.get_section().get_backing_file())}"
             out_str += "\n"
             f.write(out_str)
 
@@ -714,8 +718,7 @@ class FileRead(FileOperation, object):
         super(FileRead, self).__init__(file_inst, proc, buffer_addr,  offset, size, data)
 
     def __str__(self):
-        res = "File Read: %s" % super(FileRead, self).__str__()
-        return res
+        return f"File Read: {super(FileRead, self).__str__()}"
 
 
 class FileWrite(FileOperation, object):
@@ -724,8 +727,7 @@ class FileWrite(FileOperation, object):
         super(FileWrite, self).__init__(file_inst, proc, buffer_addr, offset, size, data)
 
     def __str__(self):
-        res = "File Write: %s" % super(FileWrite, self).__str__()
-        return res
+        return f"File Write: {super(FileWrite, self).__str__()}"
 
 
 class File:
@@ -832,14 +834,17 @@ class Section:
             from volatility.obj import Pointer
 
             # on winxp file_obj is volatility.obj.Pointer with .target being _FILE_OBJECT
-            if not (type(file_obj) is Pointer and type(file_obj.dereference()) is _FILE_OBJECT):
+            if (
+                type(file_obj) is not Pointer
+                or type(file_obj.dereference()) is not _FILE_OBJECT
+            ):
                 #from volatility.plugins.overlays.windows.windows import _EX_FAST_REF
                 if "_EX_FAST_REF" in  str(type(file_obj)):
                     # on newer volatility profiles, FilePointer is _EX_FAST_REF, needs deref
                     file_obj = file_obj.dereference_as("_FILE_OBJECT")
                 else:
                     raise TypeError("The type for self.segment.ControlArea.FilePointer in Section" + \
-                                    "class does not match _FILE_OBJECT or _EX_FAST_REF: %r (type %r)" % (file_obj, type(file_obj)))
+                                        "class does not match _FILE_OBJECT or _EX_FAST_REF: %r (type %r)" % (file_obj, type(file_obj)))
 
             self.__backing_file = interproc_data.get_file_by_file_name(str(file_obj.FileName))
 
@@ -847,7 +852,7 @@ class Section:
             if self.__backing_file is None:
                 self.__backing_file = File(str(file_obj.FileName))
                 interproc_data.add_file(self.__backing_file)
-        
+
         self.__unpickled = False
         self.__offset = self.__section_object.obj_offset
 
@@ -866,16 +871,10 @@ class Section:
         self.__unpickled = True
 
     def get_object(self):
-        if self.__unpickled:
-            return None
-        else:
-            return self.__section_object
+        return None if self.__unpickled else self.__section_object
 
     def get_offset(self):
-        if self.__unpickled:
-            return self.__offset
-        else:
-            return self.__section_object.obj_offset
+        return self.__offset if self.__unpickled else self.__section_object.obj_offset
 
     def is_cow(self):
         return self.__is_cow

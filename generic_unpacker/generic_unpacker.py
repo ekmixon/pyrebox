@@ -94,11 +94,10 @@ def append_log(line):
     global UNPACKER_LOG_PATH
     global UNPACKER_DUMP_PATH
 
-    f = open(UNPACKER_LOG_PATH, "a")
-    if line[-1] != "\n":
-        line += "\n"
-    f.write(line)
-    f.close()
+    with open(UNPACKER_LOG_PATH, "a") as f:
+        if line[-1] != "\n":
+            line += "\n"
+        f.write(line)
 
 
 def mem_write(params):
@@ -180,7 +179,7 @@ def block_exec(params):
             append_log("+----- VAD LIST")
             append_log("+----- ========")
             for vad in get_vads(pgd):
-                append_log("+----- " + str(vad))
+                append_log(f"+----- {str(vad)}")
 
             # Update current layer
             current_layer = page_status_x[page]
@@ -280,17 +279,19 @@ def initialize_callbacks(module_hdl, printer):
 
     # Set configuration values
     try:
-        f = open(os.environ["GENERIC_UNPACKER_CONF_PATH"], "r")
-        conf_data = json.load(f)
-        f.close()
+        with open(os.environ["GENERIC_UNPACKER_CONF_PATH"], "r") as f:
+            conf_data = json.load(f)
         UNPACKER_LOG_PATH = conf_data.get("unpacker_log_path", None)
         UNPACKER_DUMP_PATH = conf_data.get("unpacker_dump_path", None)
         if UNPACKER_LOG_PATH is None or UNPACKER_DUMP_PATH is None:
             raise ValueError("The json configuration file is not well-formed: fields missing?")
     except Exception as e:
-        pyrebox_print("Could not read or correctly process the configuration file: %s" % str(e))
+        pyrebox_print(
+            f"Could not read or correctly process the configuration file: {str(e)}"
+        )
+
         return
-    
+
     try:
         # Initialize log
         init_log()
@@ -304,4 +305,4 @@ def initialize_callbacks(module_hdl, printer):
         traceback.print_exc()
 
 if __name__ == "__main__":
-    print("[*] Loading python module %s" % (__file__))
+    print(f"[*] Loading python module {__file__}")

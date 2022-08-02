@@ -211,53 +211,48 @@ def parse_file(file):
         return None
 
 def to_xml(results):
-    xml_string = "<?xml version=\"1.0\" encoding=\"ISO-8859-1\"?>"
-    xml_string = xml_string + "<msdn>\n"
-    xml_string = xml_string + "<functions>\n"
+    xml_string = "<?xml version=\"1.0\" encoding=\"ISO-8859-1\"?>" + "<msdn>\n"
+    xml_string += "<functions>\n"
 
     for (dll_name, function_name, description, arguments, return_value) in results:
         xml_string = xml_string + "\t<function>\n"
         xml_string = xml_string + "\t\t<name>%s</name>\n" % function_name
         xml_string = xml_string + "\t\t<dll>%s</dll>\n" % dll_name
         xml_string = xml_string + "\t\t<description>%s</description>\n" % description
-            
+
         xml_string = xml_string + "\t\t<arguments>\n"
-            
+
         for (argument_name, argument_type, argument_description) in arguments:
             xml_string = xml_string + "\t\t\t<argument>\n"
             xml_string = xml_string + "\t\t\t\t<name>%s</name>\n" % argument_name
             xml_string = xml_string + "\t\t\t\t<type>%s</type>\n" % argument_type
             xml_string = xml_string + "\t\t\t\t<description>%s</description>\n" % argument_description
             xml_string = xml_string + "\t\t\t</argument>\n"
-            
+
         xml_string = xml_string + "\t\t</arguments>\n"
-        
+
         xml_string = xml_string + "\t\t<returns>%s</returns>\n" % return_value
         xml_string = xml_string + "\t</function>\n"
 
     xml_string = xml_string + "</functions>\n"
-    xml_string = xml_string + "</msdn>"
-    
+    xml_string = f"{xml_string}</msdn>"
+
     return xml_string
 
 def exclude_dir(directory):
     exclude_dirs = [ "\\1033\\html", "\\1033\\workshop" ]
-    
-    for exclude_dir in exclude_dirs:
-        if directory.find(exclude_dir) != -1:
-            return True
-            
-    return False
+
+    return any(directory.find(exclude_dir) != -1 for exclude_dir in exclude_dirs)
 
 def parse_files(msdn_directory):
     file_counter = 0
     results = [ ]
-    
+
     for root, dirs, files in os.walk(msdn_directory):
         for file in files:
             if exclude_dir(root):
                 continue
-                
+
             if file.endswith('htm'):
                 file_counter = file_counter + 1
                 result = parse_file(join(root, file))

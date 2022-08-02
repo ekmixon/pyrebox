@@ -111,4 +111,4 @@ def initialize_callbacks(module_hdl, printer):
         traceback.print_exc()
 
 if __name__ == "__main__":
-    print("[*] Loading python module %s" % (__file__))
+    print(f"[*] Loading python module {__file__}")

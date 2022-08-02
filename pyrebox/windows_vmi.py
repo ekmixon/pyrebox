@@ -77,35 +77,34 @@ def windows_insert_module_internal(
 
     fullname = fullname.replace("\\", "/")
 
-    if fullname[-4:].upper() == ".SYS" and not "/" in fullname:
-        fullname = "/WINDOWS/system32/DRIVERS/" + fullname
+    if fullname[-4:].upper() == ".SYS" and "/" not in fullname:
+        fullname = f"/WINDOWS/system32/DRIVERS/{fullname}"
 
     fullname = fullname.lower()
 
     mod = Module(base, size, p_pid, p_pgd, checksum, basename, fullname)
 
-    # First, we try to get the symbols from the cache 
+    # First, we try to get the symbols from the cache
     if fullname != "" and has_symbols(fullname):
         mod.set_symbols(get_symbols(fullname))
 
-    # If we are updating symbols (a simple module retrieval would
-    # not require symbol extraction), and we don't have any
-    # symbols on the cache:
     elif fullname != "" and update_symbols:
         pp_debug("Symbols not found in cache, extracting from %s...\n" % fullname)
-        unnamed_function_counter = 0
         syms = {}
-    
+
         # Here, fetch the file using the sleuthkit, and use 
         # PE file to process it
-        
+
         # First select the file system if not selected already
         if filesystem is None:
             for fs in api.get_filesystems():
                 file_list = api.open_guest_path(fs["index"], "")
-                if isinstance(file_list, list) and len(file_list) > 0:
-                    if "windows" in [f.lower() for f in file_list]:
-                        filesystem = fs
+                if (
+                    isinstance(file_list, list)
+                    and len(file_list) > 0
+                    and "windows" in [f.lower() for f in file_list]
+                ):
+                    filesystem = fs
 
         if filesystem is not None:
             # Try to read the file
@@ -117,10 +116,11 @@ def windows_insert_module_internal(
 
             if f is not None:
                 data = f.read()
-        
+
                 pe = pefile.PE(data=data)
 
                 if hasattr(pe, "DIRECTORY_ENTRY_EXPORT"):
+                    unnamed_function_counter = 0
                     for exp in pe.DIRECTORY_ENTRY_EXPORT.symbols:
                         if exp.name is not None:
                             syms[exp.name] = exp.address
@@ -135,14 +135,18 @@ def windows_insert_module_internal(
         # Anyway, in future updates, they could be resolved,
         # as we allow this in the first condition.
         symbol_cache_must_be_saved = True
- 
+
     #Module load/del notification
     if has_module(p_pid, p_pgd, base):
         ex_mod = get_module(p_pid, p_pgd, base)
         # Module replacement, only if it is a different module, and also
         # take into consideration wow64 redirection. Never substitute the
         # wow64 version by the system32 version of the same dll
-        if (ex_mod.get_fullname().lower() != fullname.lower()) and not ((ex_mod.get_name().lower() == basename.lower()) and ("windows/syswow64".lower() in ex_mod.get_fullname().lower()) and ("windows/system32" in fullname.lower())):
+        if ex_mod.get_fullname().lower() != fullname.lower() and (
+            ex_mod.get_name().lower() != basename.lower()
+            or "windows/syswow64".lower() not in ex_mod.get_fullname().lower()
+            or "windows/system32" not in fullname.lower()
+        ):
             # Notify of module deletion and module load
             dispatch_module_remove_callback(p_pid, p_pgd, base,
                                             ex_mod.get_size(),
@@ -152,8 +156,6 @@ def windows_insert_module_internal(
             mod.set_present()
             dispatch_module_load_callback(p_pid, p_pgd, base, size, basename, fullname)
 
-        # If we updated the symbols and have a bigger list now, dont substitute the module
-        # but update its symbols instead
         elif len(mod.get_symbols()) > len(ex_mod.get_symbols()):
             ex_mod.set_symbols(mod.get_symbols())
         # In any case, mark as present 
@@ -214,11 +216,7 @@ def windows_update_modules(pgd, update_symbols=False):
     from vmi import get_module
     from vmi import has_module
 
-    if pgd != 0:
-        addr_space = get_addr_space(pgd)
-    else:
-        addr_space = get_addr_space()
-
+    addr_space = get_addr_space(pgd) if pgd != 0 else get_addr_space()
     if addr_space is None:
         pp_error("Volatility address space not loaded\n")
         return []
@@ -232,16 +230,20 @@ def windows_update_modules(pgd, update_symbols=False):
             "_KDDEBUGGER_DATA64",
             offset=last_kdbg,
             vm=addr_space)
-        
+
         # List entries are returned, so that
         # we can monitor memory writes to these
         # entries and detect when a module is added
         # or removed
         list_entry_size = None
-        list_entry_regions = []
+        list_entry_regions = [
+            (
+                kdbg.obj_offset,
+                kdbg.PsLoadedModuleList.obj_offset,
+                kdbg.PsLoadedModuleList.size(),
+            )
+        ]
 
-        # Add the initial list pointer as a list entry
-        list_entry_regions.append((kdbg.obj_offset, kdbg.PsLoadedModuleList.obj_offset, kdbg.PsLoadedModuleList.size()))
 
         # Mark all modules as non-present
         set_modules_non_present(0, 0)
@@ -255,7 +257,7 @@ def windows_update_modules(pgd, update_symbols=False):
 
         # Remove all the modules that are not marked as present
         clean_non_present_modules(0, 0)
-  
+
         if symbol_cache_must_be_saved:
             from vmi import save_symbols_to_cache_file
             save_symbols_to_cache_file()
@@ -291,7 +293,7 @@ def windows_update_modules(pgd, update_symbols=False):
             if scan_peb:
                 # Add the initial list pointer as a list entry if we already have a PEB and LDR
                 list_entry_regions.append((task.Peb.Ldr.dereference().obj_offset, task.Peb.Ldr.InLoadOrderModuleList.obj_offset, task.Peb.Ldr.InLoadOrderModuleList.size() * 3))
-                
+
                 # Note: we do not erase the modules we have information for from the list,
                 # unless we have a different module loaded at the same base address.
                 # In this way, if at some point the module gets unmapped from the PEB list
@@ -329,21 +331,25 @@ def windows_update_modules(pgd, update_symbols=False):
 
                 if api.get_os_bits() == 64 and task.IsWow64:
                     for vad in task.VadRoot.traverse():
-                        if vad is not None:
-                            if hasattr(vad, "FileObject"):
-                                f = vad.FileObject
-                                if f is not None:
-                                    fname = f.file_name_with_device()
-                                    if fname and "Windows\\SysWOW64".lower() in fname.lower() and ".dll" == fname[-4:].lower():
-                                        fname_starts = fname.find("Windows\\SysWOW64")
-                                        fname = fname[fname_starts:]
-                                        windows_insert_module_internal(p_pid, p_pgd, vad.Start,
-                                                                       vad.End - vad.Start,
-                                                                       fname,
-                                                                       fname.split("\\")[-1],
-                                                                       "",
-                                                                       update_symbols,
-                                                                       do_stop = True)
+                        if vad is not None and hasattr(vad, "FileObject"):
+                            f = vad.FileObject
+                            if f is not None:
+                                fname = f.file_name_with_device()
+                                if (
+                                    fname
+                                    and "Windows\\SysWOW64".lower()
+                                    in fname.lower()
+                                    and fname[-4:].lower() == ".dll"
+                                ):
+                                    fname_starts = fname.find("Windows\\SysWOW64")
+                                    fname = fname[fname_starts:]
+                                    windows_insert_module_internal(p_pid, p_pgd, vad.Start,
+                                                                   vad.End - vad.Start,
+                                                                   fname,
+                                                                   fname.split("\\")[-1],
+                                                                   "",
+                                                                   update_symbols,
+                                                                   do_stop = True)
                 # Remove all the modules that are not marked as present
                 clean_non_present_modules(p_pid, p_pgd)
 
@@ -445,7 +451,7 @@ def windows_read_memory_mapped(pgd, addr, size, pte, is_pae, bitness):
             break
     if vad is None:
         return None
-    
+
     filename = None
     if vad.ControlArea is not None and vad.FileObject is not None:
         filename = str(vad.ControlArea.FileObject.FileName)
@@ -460,7 +466,7 @@ def windows_read_memory_mapped(pgd, addr, size, pte, is_pae, bitness):
     page_offset_on_vad = (offset_on_vad - (offset_on_vad & 0xFFF))
     # Consider 4 KiB pages
     ppte_index = page_offset_on_vad / 0x1000
-    
+
     if ppte_index >= vad.ControlArea.Segment.TotalNumberOfPtes.v():
         return None
 

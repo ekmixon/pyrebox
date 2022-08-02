@@ -92,11 +92,11 @@ def opcodes_ret(addr_from, addr_to, data, callback_name, argument_parser, mod, f
             argument_parser.update_return(cpu.EAX)
         elif TARGET_LONG_SIZE == 8:
             argument_parser.update_return(cpu.RAX)
-        data.out_args = [arg for arg in argument_parser.get_out_args()]
+        data.out_args = list(argument_parser.get_out_args())
         data.ret = argument_parser.get_ret()
         proc.add_call(addr_from, addr_to, data)
     except Exception as e:
-        mwmon.printer("Exception: %s" % str(e))
+        mwmon.printer(f"Exception: {str(e)}")
     finally:
         return
 
@@ -137,9 +137,12 @@ def opcodes(params, db, proc):
                     return
 
         # First shortcut: check if it is an excluded api/module, or included:
-        if mwmon.exclude_apis_addrs is not None and len(mwmon.exclude_apis_addrs) > 0:
-            if real_api_addr in mwmon.exclude_apis_addrs:
-                return
+        if (
+            mwmon.exclude_apis_addrs is not None
+            and len(mwmon.exclude_apis_addrs) > 0
+            and real_api_addr in mwmon.exclude_apis_addrs
+        ):
+            return
 
         if mwmon.exclude_modules_addrs is not None and len(mwmon.exclude_modules_addrs) > 0:
             for (base, size) in mwmon.exclude_modules_addrs:
@@ -153,9 +156,12 @@ def opcodes(params, db, proc):
                 if pc >= base and pc < (base + size):
                     return
 
-        if mwmon.include_apis_addrs is not None and len(mwmon.include_apis_addrs) > 0:
-            if real_api_addr not in mwmon.include_apis_addrs:
-                return
+        if (
+            mwmon.include_apis_addrs is not None
+            and len(mwmon.include_apis_addrs) > 0
+            and real_api_addr not in mwmon.include_apis_addrs
+        ):
+            return
 
         if proc.in_mod_boundaries(real_api_addr):
 
@@ -185,13 +191,12 @@ def opcodes(params, db, proc):
                     elif TARGET_LONG_SIZE == 8:
                         proc.add_call(pc, real_api_addr, "[PID: %x] %016x --> %s:%s(%016x) --> %016x\n" % (
                             proc.pid, pc, mod, fun, real_api_addr, ret_addr))
-                else:
-                    if TARGET_LONG_SIZE == 4:
-                        proc.add_call(pc, real_api_addr, "[PID: %x] %08x --> %s:%s(+%x)(%08x) --> %08x\n" % (
-                            proc.pid, pc, mod, fun, (next_pc - real_api_addr), next_pc, ret_addr))
-                    elif TARGET_LONG_SIZE == 8:
-                        proc.add_call(pc, real_api_addr, "[PID: %x] %016x --> %s:%s(+%x)(%016x) --> %016x\n" % (
-                            proc.pid, pc, mod, fun, (next_pc - real_api_addr), next_pc, ret_addr))
+                elif TARGET_LONG_SIZE == 4:
+                    proc.add_call(pc, real_api_addr, "[PID: %x] %08x --> %s:%s(+%x)(%08x) --> %08x\n" % (
+                        proc.pid, pc, mod, fun, (next_pc - real_api_addr), next_pc, ret_addr))
+                elif TARGET_LONG_SIZE == 8:
+                    proc.add_call(pc, real_api_addr, "[PID: %x] %016x --> %s:%s(+%x)(%016x) --> %016x\n" % (
+                        proc.pid, pc, mod, fun, (next_pc - real_api_addr), next_pc, ret_addr))
                 return
 
             data = APICallData()
@@ -208,7 +213,7 @@ def opcodes(params, db, proc):
             if not argument_parser.in_db():
                 return
 
-            data.in_args = [arg for arg in argument_parser.get_in_args()]
+            data.in_args = list(argument_parser.get_in_args())
 
             # If return address could not be read, we skip the callback
             if ret_addr != 0:

@@ -192,17 +192,10 @@ class InterprocData():
         return self.__procs.values()[index]
 
     def get_process_by_pid(self, pid):
-        if pid in self.__procs:
-            return self.__procs[pid]
-        else:
-            return None
+        return self.__procs[pid] if pid in self.__procs else None
 
     def get_process_by_pgd(self, pgd):
-        for p in self.__procs.values():
-            if p.get_pgd() == pgd:
-                return p
-        else:
-            return None
+        return next((p for p in self.__procs.values() if p.get_pgd() == pgd), None)
 
     def get_processes(self):
         return self.__procs.values()
@@ -216,10 +209,9 @@ class InterprocData():
         return self.__files[i]
 
     def get_file_by_file_name(self, file_name):
-        for fi in self.__files:
-            if fi.get_file_name() == file_name:
-                return fi
-        return None
+        return next(
+            (fi for fi in self.__files if fi.get_file_name() == file_name), None
+        )
 
     # ---- Section
 
@@ -230,10 +222,7 @@ class InterprocData():
         return self.__sections[index]
 
     def get_section_by_offset(self, offset):
-        for se in self.__sections:
-            if se.get_offset() == offset:
-                return se
-        return None
+        return next((se for se in self.__sections if se.get_offset() == offset), None)
 
 
 
@@ -260,9 +249,8 @@ def serialize_interproc():
     import traceback
     import pickle
     try:
-        f_out = open(interproc_config.interproc_bin_log_name, "w")
-        pickle.dump(interproc_data, f_out)
-        f_out.close()
+        with open(interproc_config.interproc_bin_log_name, "w") as f_out:
+            pickle.dump(interproc_data, f_out)
     except Exception:
         traceback.print_exc()
         pp_error(traceback.print_stack())
@@ -273,10 +261,9 @@ def interproc_basic_stats():
     global interproc_data
     import traceback
     try:
-        f = open(interproc_config.interproc_basic_stats_name, "w")
-        for proc in interproc_data.get_processes():
-            proc.print_stats(f)
-        f.close()
+        with open(interproc_config.interproc_basic_stats_name, "w") as f:
+            for proc in interproc_data.get_processes():
+                proc.print_stats(f)
     except Exception:
         traceback.print_exc()
         pp_error(traceback.print_stack())
@@ -312,11 +299,11 @@ def module_entry_point(proc, params):
     # Get volatility address space using the function in utils
     addr_space = get_addr_space(pgd)
 
-    # Get list of Task objects using volatility (EPROCESS executive objects)
-    eprocs = [t for t in tasks.pslist(
-        addr_space) if t.Pcb.DirectoryTableBase.v() == pgd]
-
-    if len(eprocs) > 0:
+    if eprocs := [
+        t
+        for t in tasks.pslist(addr_space)
+        if t.Pcb.DirectoryTableBase.v() == pgd
+    ]:
         proc.set_wow64(eprocs[0].IsWow64)
 
 
@@ -414,14 +401,14 @@ def add_module(proc, params):
             bp_funcs[(mod_name, "ZwCreateProcess")] = (
                 ntcreateprocess, True, 4)
 
-        if not ("WinXP" in profile or "Win2003" in profile):
-            # On Vista (and onwards), kernel32.dll no longer uses
-            # ZwCreateProcess/ZwCreateProcessEx (although these function remain
-            # in ntdll.dll. It Uses ZwCreateUserProcess.
-            if (mod_name, "ZwCreateUserProcess") not in breakpoints:
-                breakpoints[(mod_name, "ZwCreateUserProcess")] = None
-                bp_funcs[(mod_name, "ZwCreateUserProcess")] = (
-                    ntcreateprocess, True, 4)
+        if (
+            "WinXP" not in profile
+            and "Win2003" not in profile
+            and (mod_name, "ZwCreateUserProcess") not in breakpoints
+        ):
+            breakpoints[(mod_name, "ZwCreateUserProcess")] = None
+            bp_funcs[(mod_name, "ZwCreateUserProcess")] = (
+                ntcreateprocess, True, 4)
 
     elif "windows/system32/ntdll.dll" in fullname.lower():
 
@@ -478,14 +465,14 @@ def add_module(proc, params):
             bp_funcs[(mod_name, "ZwCreateProcess")] = (
                 ntcreateprocess, True, TARGET_LONG_SIZE)
 
-        if not ("WinXP" in profile or "Win2003" in profile):
-            # On Vista (and onwards), kernel32.dll no longer uses
-            # ZwCreateProcess/ZwCreateProcessEx (although these function remain
-            # in ntdll.dll. It Uses ZwCreateUserProcess.
-            if (mod_name, "ZwCreateUserProcess") not in breakpoints:
-                breakpoints[(mod_name, "ZwCreateUserProcess")] = None
-                bp_funcs[(mod_name, "ZwCreateUserProcess")] = (
-                    ntcreateprocess, True, TARGET_LONG_SIZE)
+        if (
+            "WinXP" not in profile
+            and "Win2003" not in profile
+            and (mod_name, "ZwCreateUserProcess") not in breakpoints
+        ):
+            breakpoints[(mod_name, "ZwCreateUserProcess")] = None
+            bp_funcs[(mod_name, "ZwCreateUserProcess")] = (
+                ntcreateprocess, True, TARGET_LONG_SIZE)
 
     # Add breakpoint if necessary
     for (mod, fun) in breakpoints:
@@ -496,14 +483,14 @@ def add_module(proc, params):
                 long_size = bp_funcs[(mod, fun)][2]
                 callback = functools.partial(
                     f_callback, cm=cm, proc=proc, update_vads=update_vads, long_size = long_size)
-                bp = api.BP(str("%s!%s" % (mod, fun)), pgd, func = callback, new_style = True)
+                bp = api.BP(str(f"{mod}!{fun}"), pgd, func = callback, new_style = True)
                 bp.enable()
                 interproc_breakpoints.append(bp)
                 breakpoints[(mod, fun)] = (bp, bp.get_addr())
                 pp_print("Adding breakpoint at %s:%s %x:%x from process with PID %x\n" %
                               (mod, fun, bp.get_addr(), pgd, pid))
             except Exception as e:
-                pyrebox_print("Could not set breakpoint on interproc: %s" % str(e))
+                pyrebox_print(f"Could not set breakpoint on interproc: {str(e)}")
 
 
     # Main module of the process. Only set entry point callback if it has not been set already.
@@ -658,10 +645,8 @@ def initialize_callbacks(module_hdl, printer):
     # Set configuration values
     try:
         pyrebox_print("[*]    Reading configuration file")
-        #Read AutoRun configuration file (json)
-        f = open(os.environ["MWMONITOR_INTERPROC_CONF_PATH"], "r")
-        conf = json.load(f)
-        f.close()
+        with open(os.environ["MWMONITOR_INTERPROC_CONF_PATH"], "r") as f:
+            conf = json.load(f)
         interproc_config.interproc_bin_log = conf.get("bin_log", False)
         interproc_config.interproc_text_log = conf.get("text_log", False)
         interproc_config.interproc_basic_stats = conf.get("basic_stats", False)
@@ -669,13 +654,16 @@ def initialize_callbacks(module_hdl, printer):
         interproc_config.interproc_basic_stats_name = conf.get("basic_stats_path", "basic_stats")
         interproc_config.interproc_bin_log_name = conf.get("bin_log_path", "interproc.bin")
 
-        
+
         interproc_config.interproc_text_log_handle = open(interproc_config.interproc_text_log_name, "w")
 
     except Exception as e:
-        pyrebox_print("Could not read or correctly process the configuration file: %s" % str(e))
+        pyrebox_print(
+            f"Could not read or correctly process the configuration file: {str(e)}"
+        )
+
         return
-    
+
     try:
         cm = CallbackManager(module_hdl, new_style = True)
         # Initialize process creation callback
@@ -687,4 +675,4 @@ def initialize_callbacks(module_hdl, printer):
         traceback.print_exc()
 
 if __name__ == "__main__":
-    print("[*] Loading python module %s" % (__file__))
+    print(f"[*] Loading python module {__file__}")

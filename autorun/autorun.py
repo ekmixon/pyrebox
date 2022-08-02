@@ -122,7 +122,9 @@ def remove_autorun_create_proc_callback(callback):
     if callback in create_proc_callbacks:
         create_proc_callbacks.remove(callback)
     else:
-        pyrebox_print("Could not remove callback %s from create_proc_callbacks: Not in list" % str(callback))
+        pyrebox_print(
+            f"Could not remove callback {str(callback)} from create_proc_callbacks: Not in list"
+        )
 
 def remove_autorun_load_module_callback(callback):
     ''' Internal callback for modules 
@@ -132,7 +134,9 @@ def remove_autorun_load_module_callback(callback):
     if callback in load_module_callbacks:
         load_module_callbacks.remove(callback)
     else:
-        pyrebox_print("Could not remove callback %s from load_module_callbacks: Not in list" % str(callback))
+        pyrebox_print(
+            f"Could not remove callback {str(callback)} from load_module_callbacks: Not in list"
+        )
 
 def remove_autorun_entry_point_callback(callback):
     ''' Internal callback for modules 
@@ -142,7 +146,9 @@ def remove_autorun_entry_point_callback(callback):
     if callback in entry_point_callbacks:
         entry_point_callbacks.remove(callback)
     else:
-        pyrebox_print("Could not remove callback %s from entry_point_callbacks: Not in list" % str(callback))
+        pyrebox_print(
+            f"Could not remove callback {str(callback)} from entry_point_callbacks: Not in list"
+        )
 
 def module_entry_point(params):
     '''
@@ -255,7 +261,7 @@ def files_copied_callback(directories_to_remove):
     files.
     '''
     for d in directories_to_remove:
-        pyrebox_print("Deleting temporary directory: %s" % d)
+        pyrebox_print(f"Deleting temporary directory: {d}")
         shutil.rmtree(d)
 
 def initialize_callbacks(module_hdl, printer):
@@ -277,10 +283,8 @@ def initialize_callbacks(module_hdl, printer):
     pyrebox_print = printer
 
     pyrebox_print("[*]    Reading configuration file")
-    #Read AutoRun configuration file (json)
-    f = open(os.environ["AUTORUN_CONF_PATH"], "r")
-    conf = json.load(f)
-    f.close()
+    with open(os.environ["AUTORUN_CONF_PATH"], "r") as f:
+        conf = json.load(f)
     kws = ["container_path", "main_executable_file", "extract_path", "temp_path", "preserve_filenames"]
     for k in kws:
         if k not in conf:
@@ -298,23 +302,17 @@ def initialize_callbacks(module_hdl, printer):
 
     temp_dnames = []
     if "container_path" in conf and tarfile.is_tarfile(conf["container_path"]):
-        # For each file in the tar file, extract to a temporary file,
-        # and copy to the VM with the appropriate file name.
-        extracted_files = {}
         tar = tarfile.open(conf["container_path"], "r:gz")
-        # Get file names inside the tar file
-        for tarinfo in tar:
-            extracted_files[tarinfo.name] = None
-
+        extracted_files = {tarinfo.name: None for tarinfo in tar}
         # Extract each file into a temporary file
-        for fname in extracted_files.keys():
+        for fname in extracted_files:
             temp_dname = tempfile.mkdtemp(dir=conf["temp_path"])
             temp_dnames.append(temp_dname)
             tar.extract(fname, path=temp_dname)
             extracted_files[fname] = os.path.join(temp_dname, fname)
 
         tar.close()
-        
+
         # Copy files to the VM
         for fname, temp_fname in extracted_files.iteritems():
             # Copy the specified file to C:\\temp.exe in the guest
@@ -340,4 +338,4 @@ def initialize_callbacks(module_hdl, printer):
     pyrebox_print("Module loaded: %d" % module_hdl)
 
 if __name__ == "__main__":
-    print("[*] Loading python module %s" % (__file__))
+    print(f"[*] Loading python module {__file__}")

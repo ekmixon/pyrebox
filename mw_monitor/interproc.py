@@ -58,10 +58,8 @@ def read_parameters(cpu, num_params):
         except:
             buff = "\x00" * len((num_params + 1) * 4)
             mwmon.printer("Could not read properly the parameters in interproc.py")
-        params = struct.unpack("<" + "I" * (1 + num_params), buff)
-        return params
+        return struct.unpack("<" + "I" * (1 + num_params), buff)
     elif TARGET_LONG_SIZE == 8:
-        params_regs = []
         params_stack = ()
 
         # Add the return address as parameter 0
@@ -71,8 +69,7 @@ def read_parameters(cpu, num_params):
             buff = "\x00" * 8
             mwmon.printer("Could not read properly the parameters in interproc.py")
 
-        params_regs.append(struct.unpack("<Q", buff)[0])
-
+        params_regs = [struct.unpack("<Q", buff)[0]]
         if num_params <= 1:
             params_regs.append(cpu.RCX)
         if num_params <= 2:
@@ -90,7 +87,7 @@ def read_parameters(cpu, num_params):
             except:
                 buff = "\x00" * ((num_params + 5) * 8)
                 mwmon.printer("Could not read properly the parameters in interproc.py")
-                
+
             params_stack = struct.unpack(
                 "<" + "Q" * (5 + num_params), buff)
             params_stack = params_stack[5:]
@@ -186,11 +183,10 @@ def ntcreateprocessret(params,
         new_proc.set_pid(int(proc_obj.UniqueProcessId))
         new_proc.set_pgd(int(proc_obj.Pcb.DirectoryTableBase.v()))
         mw_monitor_start_monitoring_process(new_proc)
-    else:
-        if TARGET_LONG_SIZE == 4: 
-            mwmon.printer("Error while trying to retrieve EPROCESS for handle %x, PID %x, EAX: %x" % (proc_hdl, pid, cpu.EAX))
-        elif TARGET_LONG_SIZE == 8:
-            mwmon.printer("Error while trying to retrieve EPROCESS for handle %x, PID %x, EAX: %x" % (proc_hdl, pid, cpu.RAX))
+    elif TARGET_LONG_SIZE == 4: 
+        mwmon.printer("Error while trying to retrieve EPROCESS for handle %x, PID %x, EAX: %x" % (proc_hdl, pid, cpu.EAX))
+    elif TARGET_LONG_SIZE == 8:
+        mwmon.printer("Error while trying to retrieve EPROCESS for handle %x, PID %x, EAX: %x" % (proc_hdl, pid, cpu.RAX))
 
     if update_vads:
         proc.update_vads()
@@ -342,11 +338,10 @@ def ntopenprocessret(params, pid, callback_name, proc_hdl_p, proc, update_vads):
         new_proc.set_pid(int(proc_obj.UniqueProcessId))
         new_proc.set_pgd(int(proc_obj.Pcb.DirectoryTableBase.v()))
         mw_monitor_start_monitoring_process(new_proc)
-    else:
-        if TARGET_LONG_SIZE == 4: 
-            mwmon.printer("Error while trying to retrieve EPROCESS for handle %x, PID %x, EAX: %x" % (proc_hdl, pid, cpu.EAX))
-        elif TARGET_LONG_SIZE == 8:
-            mwmon.printer("Error while trying to retrieve EPROCESS for handle %x, PID %x, EAX: %x" % (proc_hdl, pid, cpu.RAX))
+    elif TARGET_LONG_SIZE == 4: 
+        mwmon.printer("Error while trying to retrieve EPROCESS for handle %x, PID %x, EAX: %x" % (proc_hdl, pid, cpu.EAX))
+    elif TARGET_LONG_SIZE == 8:
+        mwmon.printer("Error while trying to retrieve EPROCESS for handle %x, PID %x, EAX: %x" % (proc_hdl, pid, cpu.RAX))
 
     if update_vads:
         proc.update_vads()
@@ -438,14 +433,13 @@ def ntwritevirtualmemory(params, pid, proc, update_vads, reverse=False):
                     proc_obj = handle.dereference_as("_EPROCESS")
                     break
             break
-    if proc_obj is not None:
-        for proc in mwmon.data.procs:
-            if proc.pid == proc_obj.UniqueProcessId:
-                remote_proc = proc
-                break
-    else:
+    if proc_obj is None:
         # Sometimes we get calls to this function over non-proc handles (e.g. type "Desktop")
         return
+    for proc in mwmon.data.procs:
+        if proc.pid == proc_obj.UniqueProcessId:
+            remote_proc = proc
+            break
     if remote_proc is None:
         mwmon.printer(
             "[!]  Could not obtain remote proc, or it is not being monitored")
@@ -455,27 +449,23 @@ def ntwritevirtualmemory(params, pid, proc, update_vads, reverse=False):
             "[!]  Could not obtain local proc, or it is not being monitored")
         return
     else:
-        if reverse:
-            data = None
-            if mwmon.interproc_text_log and mwmon.interproc_text_log_handle is not None:
-                f = mwmon.interproc_text_log_handle
+        if mwmon.interproc_text_log and mwmon.interproc_text_log_handle is not None:
+            f = mwmon.interproc_text_log_handle
+            if reverse:
                 if TARGET_LONG_SIZE == 4:
                     f.write("[PID: %x] NtReadVirtualMemory: PID: %x - Addr: %08x <-- PID: %x Addr: %08x / Size: %08x\n" %
                             (pid, local_proc.pid, local_addr, remote_proc.pid, remote_addr, size))
                 elif TARGET_LONG_SIZE == 8:
                     f.write("[PID: %x] NtReadVirtualMemory: PID: %x - Addr: %16x <-- PID: %x Addr: %16x / Size: %16x\n" %
                             (pid, local_proc.pid, local_addr, remote_proc.pid, remote_addr, size))
-        else:
-            data = None
-            if mwmon.interproc_text_log and mwmon.interproc_text_log_handle is not None:
-                f = mwmon.interproc_text_log_handle
-                if TARGET_LONG_SIZE == 4:
-                    f.write("[PID: %x] NtWriteVirtualMemory: PID: %x - Addr: %08x --> PID: %x Addr: %08x / Size: %08x\n" %
-                            (pid, local_proc.pid, local_addr, remote_proc.pid, remote_addr, size))
-                elif TARGET_LONG_SIZE == 8:
-                    f.write("[PID: %x] NtWriteVirtualMemory: PID: %x - Addr: %16x --> PID: %x Addr: %16x / Size: %16x\n" %
-                            (pid, local_proc.pid, local_addr, remote_proc.pid, remote_addr, size))
+            elif TARGET_LONG_SIZE == 4:
+                f.write("[PID: %x] NtWriteVirtualMemory: PID: %x - Addr: %08x --> PID: %x Addr: %08x / Size: %08x\n" %
+                        (pid, local_proc.pid, local_addr, remote_proc.pid, remote_addr, size))
+            elif TARGET_LONG_SIZE == 8:
+                f.write("[PID: %x] NtWriteVirtualMemory: PID: %x - Addr: %16x --> PID: %x Addr: %16x / Size: %16x\n" %
+                        (pid, local_proc.pid, local_addr, remote_proc.pid, remote_addr, size))
 
+        data = None
         inj = Injection(remote_proc, remote_addr,
                         local_proc, local_addr, size, data, reverse)
         local_proc.add_injection(inj)
@@ -652,16 +642,8 @@ def ntmapviewofsection_ret(params,
     # First, remove callback
     mwmon.cm.rm_callback(callback_name)
 
-    if base_p != 0:
-        base = dereference_target_long(base_p, pgd)
-    else:
-        base = 0
-
-    if size_p != 0:
-        size = dereference_target_long(size_p, pgd)
-    else:
-        size = 0
-
+    base = dereference_target_long(base_p, pgd) if base_p != 0 else 0
+    size = dereference_target_long(size_p, pgd) if size_p != 0 else 0
     # Offset is always 8 bytes
     if offset_p != 0:
         try:
@@ -764,7 +746,6 @@ def ntmapviewofsection(params, pid, proc, update_vads):
     # proc_obj represents the process over which the section is mapped
     # section_object represents the section being mapped.
     if (proc_obj is not None or mapping_proc is not None) and section_obj is not None:
-        mapped_sec = None
         if not mapping_proc:
             for proc in mwmon.data.procs:
                 if proc.pid == proc_obj.UniqueProcessId:
@@ -775,10 +756,14 @@ def ntmapviewofsection(params, pid, proc, update_vads):
                           " a handle was obtained with an API different from " +
                           "OpenProcess or CreateProcess")
             return
-        for sec in mwmon.data.sections:
-            if sec.get_offset() == section_obj.obj_offset:
-                mapped_sec = sec
-                break
+        mapped_sec = next(
+            (
+                sec
+                for sec in mwmon.data.sections
+                if sec.get_offset() == section_obj.obj_offset
+            ),
+            None,
+        )
 
         # If the section was not in our list, we create an entry
         if mapped_sec is None:
@@ -844,12 +829,15 @@ def ntunmapviewofsection(params, pid, proc, update_vads):
                (TARGET_LONG_SIZE == 8 and proc_handle == 0xffffffffffffffff):
                 proc_obj = task
                 break
-            elif task.UniqueProcessId == pid and task.ObjectTable.HandleTableList:
+            elif task.ObjectTable.HandleTableList:
                 for handle in task.ObjectTable.handles():
-                    if handle.is_valid():
-                        if handle.HandleValue == proc_handle and handle.get_object_type() == "Process":
-                            proc_obj = handle.dereference_as("_EPROCESS")
-                            break
+                    if (
+                        handle.is_valid()
+                        and handle.HandleValue == proc_handle
+                        and handle.get_object_type() == "Process"
+                    ):
+                        proc_obj = handle.dereference_as("_EPROCESS")
+                        break
                 break
 
     mapping_proc = None
@@ -921,12 +909,15 @@ def ntvirtualprotect(params, pid, proc, update_vads):
                (TARGET_LONG_SIZE == 8 and proc_handle == 0xffffffffffffffff):
                 proc_obj = task
                 break
-            elif task.UniqueProcessId == pid and task.ObjectTable.HandleTableList:
+            elif task.ObjectTable.HandleTableList:
                 for handle in task.ObjectTable.handles():
-                    if handle.is_valid():
-                        if handle.HandleValue == proc_handle and handle.get_object_type() == "Process":
-                            proc_obj = handle.dereference_as("_EPROCESS")
-                            break
+                    if (
+                        handle.is_valid()
+                        and handle.HandleValue == proc_handle
+                        and handle.get_object_type() == "Process"
+                    ):
+                        proc_obj = handle.dereference_as("_EPROCESS")
+                        break
                 break
 
     mapping_proc = None
@@ -981,16 +972,8 @@ def ntallocatevirtualmemory_ret(params,
     # base and size_p depend on 32-bit vs. 64 bit. This should be turned into
     # 8 bytes for 64 bit guest.
 
-    if base_addr_p != 0:
-        base = dereference_target_long(base_addr_p, pgd)
-    else:
-        base = 0
-
-    if size_p != 0:
-        size = dereference_target_long(size_p, pgd)
-    else:
-        size = 0
-
+    base = dereference_target_long(base_addr_p, pgd) if base_addr_p != 0 else 0
+    size = dereference_target_long(size_p, pgd) if size_p != 0 else 0
     if mwmon.interproc_text_log and mwmon.interproc_text_log_handle is not None:
         f = mwmon.interproc_text_log_handle
         if TARGET_LONG_SIZE == 4:
@@ -1053,12 +1036,15 @@ def ntallocatevirtualmemory(params,
                (TARGET_LONG_SIZE == 8 and proc_handle == 0xffffffffffffffff):
                 proc_obj = task
                 break
-            elif task.UniqueProcessId == pid and task.ObjectTable.HandleTableList:
+            elif task.ObjectTable.HandleTableList:
                 for handle in task.ObjectTable.handles():
-                    if handle.is_valid():
-                        if handle.HandleValue == proc_handle and handle.get_object_type() == "Process":
-                            proc_obj = handle.dereference_as("_EPROCESS")
-                            break
+                    if (
+                        handle.is_valid()
+                        and handle.HandleValue == proc_handle
+                        and handle.get_object_type() == "Process"
+                    ):
+                        proc_obj = handle.dereference_as("_EPROCESS")
+                        break
                 break
 
     mapping_proc = None

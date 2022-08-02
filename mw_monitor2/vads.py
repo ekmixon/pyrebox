@@ -79,13 +79,14 @@ def get_vads(pgd):
         # Get Stack base for every THREAD 
         stacks = []
         for thread in task.ThreadListHead.list_of_type("_ETHREAD", "ThreadListEntry"):
-            teb = obj.Object("_TEB",
-                             offset=thread.Tcb.Teb,
-                             vm=task.get_process_address_space())
-            if teb:
+            if teb := obj.Object(
+                "_TEB",
+                offset=thread.Tcb.Teb,
+                vm=task.get_process_address_space(),
+            ):
                 stacks.append(teb.NtTib.StackBase)
 
-        # Traverse VAD tree 
+        # Traverse VAD tree
         for vad in task.VadRoot.traverse():
             if vad is not None:
                 # Determine if the VAD is a HEAP, STACK, or MODULE
@@ -101,7 +102,7 @@ def get_vads(pgd):
                     vad_type = "S"
                 else:
                     vad_type = "-"
-                
+
                 # Get protection flags
                 try:
                     protection = vadinfo.PROTECT_FLAGS.get(
@@ -116,10 +117,8 @@ def get_vads(pgd):
                     # even if the ControlArea is not NULL, it is only meaningful
                     # for shared (non private) memory sections.
                     if vad.VadFlags.PrivateMemory != 1 and control_area:
-                        if control_area:
-                            file_object = vad.FileObject
-                            if file_object:
-                                file_name = file_object.file_name_with_device()
+                        if file_object := vad.FileObject:
+                            file_name = file_object.file_name_with_device()
                 except AttributeError:
                     pass
 

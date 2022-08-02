@@ -28,19 +28,19 @@ import fnmatch
 
 
 def pp_print(f, *args):
-    return utils_print.prnt("%s" % (f % args))
+    return utils_print.prnt(f"{f % args}")
 
 
 def pp_debug(f, *args):
-    return utils_print.debug("%s" % (f % args))
+    return utils_print.debug(f"{f % args}")
 
 
 def pp_warning(f, *args):
-    return utils_print.warning("%s" % (f % args))
+    return utils_print.warning(f"{f % args}")
 
 
 def pp_error(f, *args):
-    return utils_print.error("%s" % (f % args))
+    return utils_print.error(f"{f % args}")
 
 
 class ConfigurationManager:
@@ -103,7 +103,13 @@ def find_procs(param):
         pgd = proc["pgd"]
         pname = proc["name"]
         # k_addr = proc["kaddr"]
-        if (nb is not None and (nb == pid or nb == pgd)) or (
-                name is not None and (fnmatch.fnmatch(pname, name) or name in pname)):
+        if (
+            nb is not None
+            and nb in [pid, pgd]
+            or (
+                name is not None
+                and (fnmatch.fnmatch(pname, name) or name in pname)
+            )
+        ):
             found.append((pid, pgd, pname))
     return found

@@ -118,12 +118,16 @@ class Proc:
 
 
 def vol_command_help(command):
-    outputs = []
-    for item in dir(command):
-        if item.startswith("render_"):
-            outputs.append(item.split("render_", 1)[-1])
-    outputopts = "\nModule Output Options: " + \
-        "{0}\n".format("{0}".format("\n".join([", ".join(o for o in sorted(outputs))])))
+    outputs = [
+        item.split("render_", 1)[-1]
+        for item in dir(command)
+        if item.startswith("render_")
+    ]
+
+    outputopts = "\nModule Output Options: " + "{0}\n".format(
+        "{0}".format("\n".join([", ".join(sorted(outputs))]))
+    )
+
 
     result = textwrap.dedent("""
     ---------------------------------
@@ -154,7 +158,7 @@ def vol_generate_commands(config):
     profs = registry.get_plugin_classes(obj.Profile)
 
     if config.PROFILE not in profs:
-        pp_error("Invalid profile " + config.PROFILE + " selected\n")
+        pp_error(f"Invalid profile {config.PROFILE}" + " selected\n")
         return True
     profile = profs[config.PROFILE]()
     for cmdname in sorted(cmds):
@@ -233,11 +237,7 @@ class ShellMagics(Magics):
         else:
             raise RuntimeError(
                 "[ShellMagics.initialize] Wrong platform specification")
-            return None
-
-        self.regs = []
-        for el in inspect.getmembers(cpu):
-            self.regs.append(el[0])
+        self.regs = [el[0] for el in inspect.getmembers(cpu)]
 
     # ===================================================== Helpers ===========
 
@@ -298,7 +298,7 @@ class ShellMagics(Magics):
         else:
             param = line.split()[0]
             try:
-                if "\\d" == param[0:2] and param[2:].isdigit():
+                if param[:2] == "\\d" and param[2:].isdigit():
                     val = int(param[2:])
                 else:
                     # Try to parse as hex
@@ -322,7 +322,7 @@ class ShellMagics(Magics):
                                 "Several matches for specified pattern\n")
                             self.x(param)
                             return
-                    if len(found) == 0:
+                    if not found:
                         pp_warning(
                             "Tried to resolve symbol %s, but not found\n" %
                             (param))
@@ -332,7 +332,6 @@ class ShellMagics(Magics):
                         ) not in mods else sym["addr"] + mods[sym["mod_fullname"].lower()])
             except BaseException:
                 val = None
-                pass
             if val is None:
                 pp_error(
                     "Incorrect val specified, please use val in hex (default), decimal (e.g., \d12345), or symbol name\n")
@@ -375,11 +374,7 @@ class ShellMagics(Magics):
         '''
         Find regisers that match the reg string passed as parameter
         '''
-        found = []
-        for regname in self.regs:
-            if reg.lower() in regname.lower():
-                found.append(regname)
-        return found
+        return [regname for regname in self.regs if reg.lower() in regname.lower()]
 
     def get_port_param(self, line):
         '''
@@ -389,10 +384,7 @@ class ShellMagics(Magics):
             return None
 
         addr = self.get_val(line)
-        if addr is None:
-            return None
-
-        return addr
+        return None if addr is None else addr
 
     def get_addr_size_param(self, line):
         '''
@@ -414,11 +406,7 @@ class ShellMagics(Magics):
         if addr is None:
             return None, None, None
 
-        # Set a default size
-        size = 512
-        if len(params) == 2:
-            size = self.get_val(params[1])
-
+        size = self.get_val(params[1]) if len(params) == 2 else 512
         return addr, size, physical
 
     def get_addr_content_param(self, line):
@@ -447,14 +435,11 @@ class ShellMagics(Magics):
 
         val = ""
         is_utf = False
-        if params[1].strip()[0] == '"' or params[1].strip()[0] == 'u':
+        if params[1].strip()[0] in ['"', 'u']:
             is_utf = (params[1].strip()[0] == 'u')
             for el in params[1:]:
                 val += el
-            if is_utf:
-                val = val.strip()[2:-1]
-            else:
-                val = val.strip()[1:-1]
+            val = val.strip()[2:-1] if is_utf else val.strip()[1:-1]
         else:
             for i in range(0, len(params[1]), 2):
                 val += struct.pack("B", int(params[1][i:i + 2], 16))
@@ -498,14 +483,11 @@ class ShellMagics(Magics):
 
         pattern = ""
         is_utf = False
-        if params[2].strip()[0] == '"' or params[2].strip()[0] == 'u':
+        if params[2].strip()[0] in ['"', 'u']:
             is_utf = (params[2].strip()[0] == 'u')
             for el in params[2:]:
                 pattern += el
-            if is_utf:
-                pattern = pattern.strip()[2:-1]
-            else:
-                pattern = pattern.strip()[1:-1]
+            pattern = pattern.strip()[2:-1] if is_utf else pattern.strip()[1:-1]
         else:
             for i in range(0, len(params[2]), 2):
                 pattern += struct.pack("B", int(params[2][i:i + 2], 16))
@@ -557,15 +539,31 @@ class ShellMagics(Magics):
         for i in md.disasm(content, addr):
             if counter >= nb:
                 break
-            pp_print("0x%x:\t%s\t%s\t%s\n" % (i.address, "".join([(("%02x " % ord(
-                content[base + e])) if e < i.size else "   ") for e in range(0, 15)]), i.mnemonic, i.op_str))
+            pp_print(
+                (
+                    "0x%x:\t%s\t%s\t%s\n"
+                    % (
+                        i.address,
+                        "".join(
+                            [
+                                ("%02x " % ord(content[base + e]))
+                                if e < i.size
+                                else "   "
+                                for e in range(15)
+                            ]
+                        ),
+                        i.mnemonic,
+                        i.op_str,
+                    )
+                )
+            )
+
             base += i.size
             counter += 1
 
     def do_help(self, command):
-        if isinstance(command, str) or isinstance(command, unicode):
-            f = getattr(self, command)
-            if f:
+        if isinstance(command, (str, unicode)):
+            if f := getattr(self, command):
                 pp_print(f.__doc__)
 
     # ===================================================== Commands ==========
@@ -583,11 +581,7 @@ class ShellMagics(Magics):
         if len(found) == 0:
             pp_warning("Process %s not found\n" % param)
         elif len(found) == 1 or (len(found) == 2 and found[0][1] == found[1][1]):
-            if found[0][0] == 0:
-                # kernel process
-                pid, pgd, pname = found[1]
-            else:
-                pid, pgd, pname = found[0]
+            pid, pgd, pname = found[1] if found[0][0] == 0 else found[0]
             self.proc_context = Proc(pid, pgd)
             pp_print("Process set to %x:%x:%s\n" % (pid, pgd, pname))
             self.shell.prompts.set_proc(pid)
@@ -637,7 +631,7 @@ class ShellMagics(Magics):
         # t.align["Nb modules"] = "r"
         running_pgd = []
         is_kernel = []
-        for i in range(0, api.get_num_cpus()):
+        for i in range(api.get_num_cpus()):
             running_pgd.append(api.get_running_process(i))
             is_kernel.append(api.is_kernel_running(i))
             pp_print("CPU %d PGD: %x InKernel: %d\n" %
@@ -650,25 +644,20 @@ class ShellMagics(Magics):
 
             include = False
             include = include or (nb is None and name is None)
-            include = include or (nb is not None and (nb == pid or nb == pgd))
-            include = include or (
-                name is not None and (
-                    fnmatch.fnmatch(
-                        pname,
-                        name) or name in pname))
-            if include:
+            include = include or nb is not None and nb in [pid, pgd]
+            if include := include or (
+                name is not None
+                and (fnmatch.fnmatch(pname, name) or name in pname)
+            ):
                 if self.proc_context is not None and self.proc_context.get_pid() == pid:
-                    pname = ">> " + pname + " <<"
+                    pname = f">> {pname} <<"
                 running_str = ""
                 if pgd in running_pgd:
                     i = running_pgd.index(pgd)
                     if is_kernel[i]:
                         running_str = "(%d-k)" % (i)
-                    else:
-                        # Do not mark the kernel as running if we are in user
-                        # mode
-                        if pid != 0:
-                            running_str = "(%d-u)" % (i)
+                    elif pid != 0:
+                        running_str = "(%d-u)" % (i)
                 t.add_row([pname,
                            running_str,
                            "*" if api.is_monitored_process(pgd) else "",
@@ -773,11 +762,7 @@ class ShellMagics(Magics):
             return
         param = line.split()[0]
 
-        mods = {}
-
-        # Get the base address for all the kernel modules
-        for m in api.get_module_list(0):
-            mods[m["fullname"].lower()] = m["base"]
+        mods = {m["fullname"].lower(): m["base"] for m in api.get_module_list(0)}
 
         # If process is set, get the base address for all the modules:
         if self.proc_context is not None:
@@ -869,7 +854,7 @@ class ShellMagics(Magics):
             self.do_help("db")
             return
         size = 1
-        for i in range(0, repeat):
+        for i in range(repeat):
             if physical:
                 content = api.r_pa(addr + (size * i), size)
             else:
@@ -896,7 +881,7 @@ class ShellMagics(Magics):
             self.do_help("dw")
             return
         size = 2
-        for i in range(0, repeat):
+        for i in range(repeat):
             if physical:
                 content = api.r_pa(addr + (size * i), size)
             else:
@@ -1031,7 +1016,7 @@ class ShellMagics(Magics):
             self.do_help("dd")
             return
         size = 4
-        for i in range(0, repeat):
+        for i in range(repeat):
             if physical:
                 content = api.r_pa(addr + (size * i), size)
             else:
@@ -1058,7 +1043,7 @@ class ShellMagics(Magics):
             self.do_help("dq")
             return
         size = 8
-        for i in range(0, repeat):
+        for i in range(repeat):
             if physical:
                 content = api.r_pa(addr + (size * i), size)
             else:
@@ -1297,7 +1282,7 @@ class ShellMagics(Magics):
             # Read until the page boundary
             block_size = 0x1000 - (pos & 0xFFF)
             block_size = min(block_size, (addr + size - pos))
-    
+
             if physical:
                 block += api.r_pa(pos, block_size)
             else:
@@ -1346,7 +1331,7 @@ class ShellMagics(Magics):
             # Read until the page boundary
             block_size = 0x1000 - (pos & 0xFFF)
             block_size = min(block_size, (addr + size - pos))
-    
+
             if physical:
                 block += api.r_pa(pos, block_size)
             else:
@@ -1682,7 +1667,7 @@ class ShellMagics(Magics):
             profs = registry.get_plugin_classes(obj.Profile)
 
             if config.PROFILE not in profs:
-                pp_error("Invalid profile " + config.PROFILE + " selected\n")
+                pp_error(f"Invalid profile {config.PROFILE}" + " selected\n")
                 return True
             profile = profs[config.PROFILE]()
             wrongprofile = ""
@@ -1725,10 +1710,7 @@ class ShellMagics(Magics):
             self.do_help("vol")
             return
         cmd = els[0]
-        if len(els) > 1:
-            cmd_params = " ".join(els[1:])
-        else:
-            cmd_params = ""
+        cmd_params = " ".join(els[1:]) if len(els) > 1 else ""
         if cmd not in self.vol_commands:
             pp_error("[!] The specified volatility command is not in the command list (%list_vol_commands)")
             return

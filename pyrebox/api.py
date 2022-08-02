@@ -87,7 +87,7 @@ def r_pa(addr, length):
     offset = addr
     ret_buffer = ""
     while offset < (addr + length):
-        read_length = 0x2000 if (addr + length - offset) > 0x2000 else (addr + length - offset)
+        read_length = min(addr + length - offset, 0x2000)
         ret_buffer += c_api.r_pa(offset, read_length)
         offset += read_length
     return ret_buffer
@@ -175,22 +175,19 @@ def w_pa(addr, buff, length=None):
         :rtype: None
     """
     import c_api
-    # The length parameter is not used at this moment,
-    # but is kept to avoid breaking old scripts.
     if length is not None and len(buff) != length:
         raise ValueError(
             "Length of the buffer does not match the declared length")
-    else:
-        # If this function call fails, it will raise an exception.
-        # Given that the exception is self explanatory, we just let it
-        # propagate upwards
-        offset = addr
-        length = len(buff)
-        while offset < (addr + length):
-            write_length = 0x2000 if (addr + length - offset) > 0x2000 else (addr + length - offset)
-            c_api.w_pa(offset, buff[(offset - addr):(offset - addr + write_length)])
-            offset += write_length
-        return None
+    # If this function call fails, it will raise an exception.
+    # Given that the exception is self explanatory, we just let it
+    # propagate upwards
+    offset = addr
+    length = len(buff)
+    while offset < (addr + length):
+        write_length = min(addr + length - offset, 0x2000)
+        c_api.w_pa(offset, buff[(offset - addr):(offset - addr + write_length)])
+        offset += write_length
+    return None
 
 
 def w_va(pgd, addr, buff, length=None):
@@ -209,22 +206,19 @@ def w_va(pgd, addr, buff, length=None):
         :rtype: None
     """
     import c_api
-    # The length parameter is not used at this moment,
-    # but is kept to avoid breaking old scripts.
     if length is not None and len(buff) != length:
         raise ValueError(
             "Length of the buffer does not match the declared length")
-    else:
-        # If this function call fails, it will raise an exception.
-        # Given that the exception is self explanatory, we just let it
-        # propagate upwards
-        offset = addr
-        length = len(buff)
-        while offset < (addr + length):
-            write_length = 0x2000 if (addr + length - offset) > 0x2000 else (addr + length - offset)
-            c_api.w_va(pgd, offset, buff[(offset - addr):(offset - addr + write_length)])
-            offset += write_length
-        return None
+    # If this function call fails, it will raise an exception.
+    # Given that the exception is self explanatory, we just let it
+    # propagate upwards
+    offset = addr
+    length = len(buff)
+    while offset < (addr + length):
+        write_length = min(addr + length - offset, 0x2000)
+        c_api.w_va(pgd, offset, buff[(offset - addr):(offset - addr + write_length)])
+        offset += write_length
+    return None
 
 
 def r_ioport(address, size):
@@ -288,22 +282,22 @@ def w_r(cpu_index, regname, val):
     if cpu_index >= get_num_cpus():
         raise ValueError("Incorrect cpu index specified")
 
-    if conf_m.platform == "i386-softmmu":
-        if regname in X86CPU.reg_nums:
-            # If this function call fails, it will raise an exception.
-            # Given that the exception is self explanatory, we just let it
-            # propagate upwards
-            return c_api.w_r(cpu_index, X86CPU.reg_nums[regname], val)
-        else:
-            raise ValueError("[w_r] Wrong register specification")
+    if conf_m.platform == "i386-softmmu" and regname in X86CPU.reg_nums:
+        # If this function call fails, it will raise an exception.
+        # Given that the exception is self explanatory, we just let it
+        # propagate upwards
+        return c_api.w_r(cpu_index, X86CPU.reg_nums[regname], val)
+    elif (
+        conf_m.platform == "i386-softmmu"
+        or conf_m.platform == "x86_64-softmmu"
+        and regname not in X64CPU.reg_nums
+    ):
+        raise ValueError("[w_r] Wrong register specification")
     elif conf_m.platform == "x86_64-softmmu":
-        if regname in X64CPU.reg_nums:
-            # If this function call fails, it will raise an exception.
-            # Given that the exception is self explanatory, we just let it
-            # propagate upwards
-            return c_api.w_r(cpu_index, X64CPU.reg_nums[regname], val)
-        else:
-            raise ValueError("[w_r] Wrong register specification")
+        # If this function call fails, it will raise an exception.
+        # Given that the exception is self explanatory, we just let it
+        # propagate upwards
+        return c_api.w_r(cpu_index, X64CPU.reg_nums[regname], val)
     else:
         raise ValueError("[w_r] Wrong platform specification")
 
@@ -335,34 +329,34 @@ def w_sr(cpu_index, regname, selector, base, limit, flags):
     if cpu_index >= get_num_cpus():
         raise ValueError("Incorrect cpu index specified")
 
-    if conf_m.platform == "i386-softmmu":
-        if regname in X86CPU.reg_nums:
-            # If this function call fails, it will raise an exception.
-            # Given that the exception is self explanatory, we just let it
-            # propagate upwards
-            return c_api.w_sr(
-                cpu_index,
-                X86CPU.reg_nums[regname],
-                selector,
-                base,
-                limit,
-                flags)
-        else:
-            raise ValueError("[w_r] Wrong register specification")
+    if conf_m.platform == "i386-softmmu" and regname in X86CPU.reg_nums:
+        # If this function call fails, it will raise an exception.
+        # Given that the exception is self explanatory, we just let it
+        # propagate upwards
+        return c_api.w_sr(
+            cpu_index,
+            X86CPU.reg_nums[regname],
+            selector,
+            base,
+            limit,
+            flags)
+    elif (
+        conf_m.platform == "i386-softmmu"
+        or conf_m.platform == "x86_64-softmmu"
+        and regname not in X64CPU.reg_nums
+    ):
+        raise ValueError("[w_r] Wrong register specification")
     elif conf_m.platform == "x86_64-softmmu":
-        if regname in X64CPU.reg_nums:
-            # If this function call fails, it will raise an exception.
-            # Given that the exception is self explanatory, we just let it
-            # propagate upwards
-            return c_api.w_sr(
-                cpu_index,
-                X64CPU.reg_nums[regname],
-                selector,
-                base,
-                limit,
-                flags)
-        else:
-            raise ValueError("[w_r] Wrong register specification")
+        # If this function call fails, it will raise an exception.
+        # Given that the exception is self explanatory, we just let it
+        # propagate upwards
+        return c_api.w_sr(
+            cpu_index,
+            X64CPU.reg_nums[regname],
+            selector,
+            base,
+            limit,
+            flags)
     else:
         raise ValueError("[w_r] Wrong platform specification")
 
@@ -543,7 +537,6 @@ def get_module_list(pgd):
     """
     import vmi
     proc_list = get_process_list()
-    mods = []
     found = False
     if pgd == 0:
         proc_pid = 0
@@ -557,18 +550,23 @@ def get_module_list(pgd):
                 found = True
                 break
 
-    if found:
-        vmi.update_modules(proc_pgd, update_symbols=False)
-        if (proc_pid, proc_pgd) in vmi.get_modules():
-            for mod in vmi.get_modules()[(proc_pid, proc_pgd)].values():
-                mods.append({"name": mod.get_name(),
-                             "fullname": mod.get_fullname(),
-                             "base": mod.get_base(),
-                             "size": mod.get_size(),
-                             "symbols_resolved" : mod.are_symbols_resolved()})
-        return mods
-    else:
+    if not found:
         raise ValueError("Process with PGD %x not found" % pgd)
+    vmi.update_modules(proc_pgd, update_symbols=False)
+    mods = []
+    if (proc_pid, proc_pgd) in vmi.get_modules():
+        mods.extend(
+            {
+                "name": mod.get_name(),
+                "fullname": mod.get_fullname(),
+                "base": mod.get_base(),
+                "size": mod.get_size(),
+                "symbols_resolved": mod.are_symbols_resolved(),
+            }
+            for mod in vmi.get_modules()[(proc_pid, proc_pgd)].values()
+        )
+
+    return mods
 
 
 def get_symbol_list(pgd = None):
@@ -615,8 +613,16 @@ def get_symbol_list(pgd = None):
 
     for mod in diff_modules.values():
         syms = mod.get_symbols()
-        for name in syms:
-            res_syms.append({"mod": mod.get_name(), "mod_fullname": mod.get_fullname(), "name": name, "addr": syms[name]})
+        res_syms.extend(
+            {
+                "mod": mod.get_name(),
+                "mod_fullname": mod.get_fullname(),
+                "name": name,
+                "addr": syms[name],
+            }
+            for name in syms
+        )
+
     return res_syms
 
 
@@ -636,12 +642,7 @@ def sym_to_va(pgd, mod_name, func_name):
         :rtype: str
     """
     import vmi
-    # First, check if the process exists
-    process_found = False
-    for proc in get_process_list():
-        if pgd == proc["pgd"]:
-            process_found = True
-            break
+    process_found = any(pgd == proc["pgd"] for proc in get_process_list())
     if not process_found:
         raise ValueError("Process with PGD %x not found" % pgd)
     mod_name = mod_name.lower()
@@ -672,12 +673,7 @@ def va_to_sym(pgd, addr):
         :rtype: tuple
     """
     import vmi
-    # First, check if the process exists
-    process_found = False
-    for proc in get_process_list():
-        if pgd == proc["pgd"]:
-            process_found = True
-            break
+    process_found = any(pgd == proc["pgd"] for proc in get_process_list())
     if not process_found:
         raise ValueError("Process with PGD %x not found" % pgd)
 
@@ -926,8 +922,8 @@ class CallbackManager:
         subname = name
         counter = 0
         while subname in self.callbacks or \
-              subname in self.load_module_callbacks or \
-              subname in self.remove_module_callbacks:
+                  subname in self.load_module_callbacks or \
+                  subname in self.remove_module_callbacks:
             subname = "%s_%d" % (name, counter)
             counter += 1
         return subname
@@ -999,16 +995,12 @@ class CallbackManager:
         # If not specified, apply the class default
         if new_style is None:
             new_style = self.new_style
-        if new_style is True:
-            wrap = wrap_new
-        else:
-            wrap = wrap_old
-
+        wrap = wrap_new if new_style is True else wrap_old
         # If a name was not provided, just provide a 16 lowercase letter random
         # name
         if name is None:
             random.seed(time.time())
-            name = "".join(random.choice(string.lowercase) for i in range(16))
+            name = "".join(random.choice(string.lowercase) for _ in range(16))
         name = self.generate_callback_name(name)
 
         # If the callback_type is a module callback, register it with specific API
@@ -1089,18 +1081,19 @@ class CallbackManager:
             raise ValueError(
                 "[!] CallbackManager: A callback with name %s does not exist, or it is a module callback (non-trigger compatible)\n" %
                 (name))
-            return
         # Remove ".so" from the path, if present
         if trigger_path[-3:] == ".so":
             trigger_path = trigger_path[:-3]
         # Check if we have the plugin compiled for the correct architecture
-        trigger_path = "%s-%s.so" % (trigger_path, conf_m.platform)
+        trigger_path = f"{trigger_path}-{conf_m.platform}.so"
         p = subprocess.Popen(
-            ["make " + trigger_path],
+            [f"make {trigger_path}"],
             shell=True,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
-            cwd=conf_m.pyre_root)
+            cwd=conf_m.pyre_root,
+        )
+
         p.wait()
 
         if os.path.isfile(trigger_path):
@@ -1126,7 +1119,6 @@ class CallbackManager:
             raise ValueError(
                 "[!] CallbackManager: A callback with name %s does not exist, or it is a module callback (non-trigger compatible)\n" %
                 (name))
-            return
         remove_trigger(self.callbacks[name])
 
     def set_trigger_var(self, name, var_name, val):
@@ -1151,15 +1143,14 @@ class CallbackManager:
             raise ValueError(
                 "[!] CallbackManager: A callback with name %s does not exist, or it is a module callback (non-trigger compatible)\n" %
                 (name))
-            return
         if isinstance(val, str):
             set_trigger_str(self.callbacks[name], var_name, val)
-        elif (isinstance(val, int) or isinstance(val, long)) and val < 0:
+        elif isinstance(val, (int, long)) and val < 0:
             raise ValueError(
                 "Negative integers not supported, use only unsigned integers")
-        elif (isinstance(val, int) or isinstance(val, long)) and conf_m.platform == "i386-softmmu":
+        elif isinstance(val, (int, long)) and conf_m.platform == "i386-softmmu":
             set_trigger_uint32(self.callbacks[name], var_name, val)
-        elif (isinstance(val, int) or isinstance(val, long)) and conf_m.platform == "x86_64-softmmu":
+        elif isinstance(val, (int, long)) and conf_m.platform == "x86_64-softmmu":
             set_trigger_uint64(self.callbacks[name], var_name, long(val))
         else:
             raise ValueError(
@@ -1183,7 +1174,6 @@ class CallbackManager:
             raise ValueError(
                 "[!] CallbackManager: A callback with name %s does not exist, or it is a module callback (non-trigger compatible)\n" %
                 (name))
-            return
         return internal_get_trigger_var(self.callbacks[name], var_name)
 
     def call_trigger_function(self, name, function_name):
@@ -1203,7 +1193,6 @@ class CallbackManager:
             raise ValueError(
                 "[!] CallbackManager: A callback with name %s does not exist, or it is a module callback (non-trigger compatible)\n" %
                 (name))
-            return
         return internal_call_trigger_function(self.callbacks[name], function_name)
 
     def clean(self):
@@ -1286,9 +1275,9 @@ class BP:
         self.__bp_repr = "BP%s_%d" % (typ_str, BP.__bp_num)
         BP.__bp_num += 1
         self.pgd = pgd
-        if isinstance(addr, int) or isinstance(addr, long):
+        if isinstance(addr, (int, long)):
             self.addr = addr
-        elif isinstance(addr, str) or isinstance(addr, unicode):
+        elif isinstance(addr, (str, unicode)):
             # Try symbol resolution
             self.addr = None
             symbols = get_symbol_list(pgd)
@@ -1311,18 +1300,21 @@ class BP:
                         # for the same mod_fullname, and we cannot have 2 modules
                         # with the same mod_fullname in the list of symbols.
                         break
-                    
+
                     # Second, check if we can match by module name 
                     if addr_name.lower() == sym["name"].lower() and addr_mod.lower() == sym["mod"].lower():
                         candidates.append(sym)
 
             if len(candidates) == 0:
-                raise ValueError("No candidate symbols found for %s" % addr)
+                raise ValueError(f"No candidate symbols found for {addr}")
             if len(candidates) > 1:
-                raise ValueError("Found more than one candidate symbol, please be more specific - %s" % addr)
+                raise ValueError(
+                    f"Found more than one candidate symbol, please be more specific - {addr}"
+                )
+
 
             mods = get_module_list(pgd)
-            
+
             for mod in mods:
                 if candidates[0]["mod_fullname"] == mod["fullname"]:
                     self.addr = mod["base"] + candidates[0]["addr"]
@@ -1334,11 +1326,7 @@ class BP:
             raise ValueError("The addr parameter has an invalid type, must be int, str or unicode")
 
         self.en = False
-        if (typ > self.EXECUTION) and size == 0:
-            self.size = 1
-        else:
-            self.size = size
-
+        self.size = 1 if (typ > self.EXECUTION) and size == 0 else size
         self.__new_style = new_style
 
         if func is not None:
@@ -1402,34 +1390,19 @@ class BP:
             :return: None
             :rtype: None
         """
-        if not self.en:
-            self.en = True
-            if self.typ == self.EXECUTION:
-                if self.size == 0:
-                    self.__bp_repr = BP.__cm.add_callback(
-                        CallbackManager.INSN_BEGIN_CB,
-                        self.func,
-                        name=self.__bp_repr,
-                        addr=self.addr,
-                        pgd=self.pgd,
-                        new_style = self.__new_style)
-                else:
-                    if not is_monitored_process(self.pgd):
-                        start_monitoring_process(self.pgd)
-                    if self.pgd not in BP.__active_bps:
-                        BP.__active_bps[self.pgd] = 1
-                    else:
-                        BP.__active_bps[self.pgd] += 1
-                    self.__bp_repr = BP.__cm.add_callback(
-                        CallbackManager.INSN_BEGIN_CB, self.func, name=self.__bp_repr,
-                        new_style = self.__new_style)
-                    BP.__cm.add_trigger(
-                        self.__bp_repr, "triggers/trigger_bp_memrange.so")
-                    BP.__cm.set_trigger_var(self.__bp_repr, "begin", self.addr)
-                    BP.__cm.set_trigger_var(
-                        self.__bp_repr, "end", self.addr + self.size)
-                    BP.__cm.set_trigger_var(self.__bp_repr, "pgd", self.pgd)
-            elif self.typ == self.MEM_READ:
+        if self.en:
+            return
+        self.en = True
+        if self.typ == self.EXECUTION:
+            if self.size == 0:
+                self.__bp_repr = BP.__cm.add_callback(
+                    CallbackManager.INSN_BEGIN_CB,
+                    self.func,
+                    name=self.__bp_repr,
+                    addr=self.addr,
+                    pgd=self.pgd,
+                    new_style = self.__new_style)
+            else:
                 if not is_monitored_process(self.pgd):
                     start_monitoring_process(self.pgd)
                 if self.pgd not in BP.__active_bps:
@@ -1437,48 +1410,64 @@ class BP:
                 else:
                     BP.__active_bps[self.pgd] += 1
                 self.__bp_repr = BP.__cm.add_callback(
-                    CallbackManager.MEM_READ_CB, self.func, name=self.__bp_repr,
+                    CallbackManager.INSN_BEGIN_CB, self.func, name=self.__bp_repr,
                     new_style = self.__new_style)
                 BP.__cm.add_trigger(
-                    self.__bp_repr, "triggers/trigger_bpr_memrange.so")
+                    self.__bp_repr, "triggers/trigger_bp_memrange.so")
                 BP.__cm.set_trigger_var(self.__bp_repr, "begin", self.addr)
                 BP.__cm.set_trigger_var(
                     self.__bp_repr, "end", self.addr + self.size)
                 BP.__cm.set_trigger_var(self.__bp_repr, "pgd", self.pgd)
-            elif self.typ == self.MEM_WRITE:
-                if not is_monitored_process(self.pgd):
-                    start_monitoring_process(self.pgd)
-                if self.pgd not in BP.__active_bps:
-                    BP.__active_bps[self.pgd] = 1
-                else:
-                    BP.__active_bps[self.pgd] += 1
-                self.__bp_repr = BP.__cm.add_callback(
-                    CallbackManager.MEM_WRITE_CB, self.func, name=self.__bp_repr,
-                    new_style = self.__new_style)
-                BP.__cm.add_trigger(
-                    self.__bp_repr, "triggers/trigger_bpw_memrange.so")
-                BP.__cm.set_trigger_var(self.__bp_repr, "begin", self.addr)
-                BP.__cm.set_trigger_var(
-                    self.__bp_repr, "end", self.addr + self.size)
-                BP.__cm.set_trigger_var(self.__bp_repr, "pgd", self.pgd)
-            elif self.typ == self.MEM_READ_PHYS:
-                self.__bp_repr = BP.__cm.add_callback(
-                    CallbackManager.MEM_READ_CB, self.func, name=self.__bp_repr,
-                    new_style = self.__new_style)
-                BP.__cm.add_trigger(
-                    self.__bp_repr, "triggers/trigger_bprh_memrange.so")
-                BP.__cm.set_trigger_var(self.__bp_repr, "begin", self.addr)
-                BP.__cm.set_trigger_var(
-                    self.__bp_repr, "end", self.addr + self.size)
-            elif self.typ == self.MEM_WRITE_PHYS:
-                self.__bp_repr = BP.__cm.add_callback(
-                    CallbackManager.MEM_WRITE_CB, self.func, name=self.__bp_repr,
-                    new_style = self.__new_style)
-                BP.__cm.add_trigger(
-                    self.__bp_repr, "triggers/trigger_bpwh_memrange.so")
-                BP.__cm.set_trigger_var(self.__bp_repr, "begin", self.addr)
-                BP.__cm.set_trigger_var(
-                    self.__bp_repr, "end", self.addr + self.size)
+        elif self.typ == self.MEM_READ:
+            if not is_monitored_process(self.pgd):
+                start_monitoring_process(self.pgd)
+            if self.pgd not in BP.__active_bps:
+                BP.__active_bps[self.pgd] = 1
+            else:
+                BP.__active_bps[self.pgd] += 1
+            self.__bp_repr = BP.__cm.add_callback(
+                CallbackManager.MEM_READ_CB, self.func, name=self.__bp_repr,
+                new_style = self.__new_style)
+            BP.__cm.add_trigger(
+                self.__bp_repr, "triggers/trigger_bpr_memrange.so")
+            BP.__cm.set_trigger_var(self.__bp_repr, "begin", self.addr)
+            BP.__cm.set_trigger_var(
+                self.__bp_repr, "end", self.addr + self.size)
+            BP.__cm.set_trigger_var(self.__bp_repr, "pgd", self.pgd)
+        elif self.typ == self.MEM_WRITE:
+            if not is_monitored_process(self.pgd):
+                start_monitoring_process(self.pgd)
+            if self.pgd not in BP.__active_bps:
+                BP.__active_bps[self.pgd] = 1
+            else:
+                BP.__active_bps[self.pgd] += 1
+            self.__bp_repr = BP.__cm.add_callback(
+                CallbackManager.MEM_WRITE_CB, self.func, name=self.__bp_repr,
+                new_style = self.__new_style)
+            BP.__cm.add_trigger(
+                self.__bp_repr, "triggers/trigger_bpw_memrange.so")
+            BP.__cm.set_trigger_var(self.__bp_repr, "begin", self.addr)
+            BP.__cm.set_trigger_var(
+                self.__bp_repr, "end", self.addr + self.size)
+            BP.__cm.set_trigger_var(self.__bp_repr, "pgd", self.pgd)
+        elif self.typ == self.MEM_READ_PHYS:
+            self.__bp_repr = BP.__cm.add_callback(
+                CallbackManager.MEM_READ_CB, self.func, name=self.__bp_repr,
+                new_style = self.__new_style)
+            BP.__cm.add_trigger(
+                self.__bp_repr, "triggers/trigger_bprh_memrange.so")
+            BP.__cm.set_trigger_var(self.__bp_repr, "begin", self.addr)
+            BP.__cm.set_trigger_var(
+                self.__bp_repr, "end", self.addr + self.size)
+        elif self.typ == self.MEM_WRITE_PHYS:
+            self.__bp_repr = BP.__cm.add_callback(
+                CallbackManager.MEM_WRITE_CB, self.func, name=self.__bp_repr,
+                new_style = self.__new_style)
+            BP.__cm.add_trigger(
+                self.__bp_repr, "triggers/trigger_bpwh_memrange.so")
+            BP.__cm.set_trigger_var(self.__bp_repr, "begin", self.addr)
+            BP.__cm.set_trigger_var(
+                self.__bp_repr, "end", self.addr + self.size)
 
     def disable(self):
         """ Disable a breakpoint
@@ -1524,10 +1513,7 @@ def open_guest_path(filesystem_index, path):
     import c_api
     # Check the filesystem_index is within the limits
     filesystems = get_filesystems()
-    found = False
-    for fs in filesystems:
-        if filesystem_index == fs["index"]:
-            found = True
+    found = any(filesystem_index == fs["index"] for fs in filesystems)
     if not found:
         raise ValueError("The specified file system index does not correspond to a valid file system")
 
@@ -1601,11 +1587,10 @@ class GuestFile:
         import c_api
         if offset is None:
             o = self.__offset
+        elif offset >= self.__size:
+            raise ValueError("The specified offset cannot be greater than the file size")
         else:
-            if offset >= self.__size:
-                raise ValueError("The specified offset cannot be greater than the file size")
-            else:
-                o = offset
+            o = offset
         # If the size is not specified, we want to read from the offset to the end of the file.
         if size is None:
             size = self.__size - o

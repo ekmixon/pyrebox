@@ -60,84 +60,81 @@ def log_coverage():
         if os.path.isfile(cov_bin_path):
             try:
                 current_vad = None
-                f = open(cov_log_path, "w")
-                f_in = open(cov_bin_path, "rb")
+                with open(cov_log_path, "w") as f:
+                    with open(cov_bin_path, "rb") as f_in:
+                        data = f_in.read(TARGET_LONG_SIZE + TARGET_LONG_SIZE)
+                        last_pc = 0
+                        while data is not None and len(data) == 8:
 
-                data = f_in.read(TARGET_LONG_SIZE + TARGET_LONG_SIZE)
-                last_pc = 0
-                while data is not None and len(data) == 8:
-
-                    if TARGET_LONG_SIZE == 4:
-                        pc, size = struct.unpack("<II", data)
-                    elif TARGET_LONG_SIZE == 8:
-                        pc, size = struct.unpack("<QQ", data)
-                    else:
-                        raise Exception(
-                            "[log_coverage()] Unsupported TARGET_LONG_SIZE: %d" % TARGET_LONG_SIZE)
-
-                    # Locate nearest lower symbol
-                    # This will only work if api tracer is
-                    # as well activated
-                    sym = proc.locate_nearest_symbol(pc)
-                    sym_text = ""
-                    if sym is not None:
-                        # mod = sym.get_mod()
-                        fun = sym.get_fun()
-                        real_api_addr = sym.get_addr()
-                        if real_api_addr == pc:
-                            sym_text = " - %s" % fun
-                        else:
-                            sym_text = " - %s(+%x)" % (
-                                fun, (pc - real_api_addr))
-
-                    if current_vad is None:
-                        current_vad = proc.get_overlapping_vad(pc)
-                        if current_vad is not None:
                             if TARGET_LONG_SIZE == 4:
-                                f.write("VAD: %08x(%08x) %08x --> %08x [%s%s]\n" % (
-                                    current_vad.get_start(),
-                                    current_vad.get_size(),
-                                    last_pc,
-                                    pc,
-                                    ntpath.basename(current_vad.get_mapped_file()), sym_text))
+                                pc, size = struct.unpack("<II", data)
                             elif TARGET_LONG_SIZE == 8:
-                                f.write("VAD: %16x(%16x) %16x --> %16x [%s%s]\n" % (
-                                    current_vad.get_start(),
-                                    current_vad.get_size(),
-                                    last_pc,
-                                    pc,
-                                    ntpath.basename(current_vad.get_mapped_file()),
-                                    sym_text))
-                            else:
-                                raise Exception(
-                                    "[log_coverage()] Unsupported TARGET_LONG_SIZE: %d" % TARGET_LONG_SIZE)
-                    else:
-                        new_vad = proc.get_overlapping_vad(pc)
-                        if new_vad != current_vad:
-                            current_vad = new_vad
-                            if TARGET_LONG_SIZE == 4:
-                                f.write("VAD: %08x(%08x) %08x --> %08x [%s%s]\n" % (
-                                    current_vad.get_start(),
-                                    current_vad.get_size(),
-                                    last_pc,
-                                    pc,
-                                    ntpath.basename(current_vad.get_mapped_file()), sym_text))
-                            elif TARGET_LONG_SIZE == 8:
-                                f.write("VAD: %16x(%16x) %16x --> %16x [%s%s]\n" % (
-                                    current_vad.get_start(),
-                                    current_vad.get_size(),
-                                    last_pc,
-                                    pc,
-                                    ntpath.basename(current_vad.get_mapped_file()), sym_text))
+                                pc, size = struct.unpack("<QQ", data)
                             else:
                                 raise Exception(
                                     "[log_coverage()] Unsupported TARGET_LONG_SIZE: %d" % TARGET_LONG_SIZE)
 
-                    data = f_in.read(TARGET_LONG_SIZE + TARGET_LONG_SIZE)
-                    # last_pc, last_size = pc, size
-                    last_pc = pc
-                f_in.close()
-                f.close()
+                            # Locate nearest lower symbol
+                            # This will only work if api tracer is
+                            # as well activated
+                            sym = proc.locate_nearest_symbol(pc)
+                            sym_text = ""
+                            if sym is not None:
+                                # mod = sym.get_mod()
+                                fun = sym.get_fun()
+                                real_api_addr = sym.get_addr()
+                                if real_api_addr == pc:
+                                    sym_text = f" - {fun}"
+                                else:
+                                    sym_text = " - %s(+%x)" % (
+                                        fun, (pc - real_api_addr))
+
+                            if current_vad is None:
+                                current_vad = proc.get_overlapping_vad(pc)
+                                if current_vad is not None:
+                                    if TARGET_LONG_SIZE == 4:
+                                        f.write("VAD: %08x(%08x) %08x --> %08x [%s%s]\n" % (
+                                            current_vad.get_start(),
+                                            current_vad.get_size(),
+                                            last_pc,
+                                            pc,
+                                            ntpath.basename(current_vad.get_mapped_file()), sym_text))
+                                    elif TARGET_LONG_SIZE == 8:
+                                        f.write("VAD: %16x(%16x) %16x --> %16x [%s%s]\n" % (
+                                            current_vad.get_start(),
+                                            current_vad.get_size(),
+                                            last_pc,
+                                            pc,
+                                            ntpath.basename(current_vad.get_mapped_file()),
+                                            sym_text))
+                                    else:
+                                        raise Exception(
+                                            "[log_coverage()] Unsupported TARGET_LONG_SIZE: %d" % TARGET_LONG_SIZE)
+                            else:
+                                new_vad = proc.get_overlapping_vad(pc)
+                                if new_vad != current_vad:
+                                    current_vad = new_vad
+                                    if TARGET_LONG_SIZE == 4:
+                                        f.write("VAD: %08x(%08x) %08x --> %08x [%s%s]\n" % (
+                                            current_vad.get_start(),
+                                            current_vad.get_size(),
+                                            last_pc,
+                                            pc,
+                                            ntpath.basename(current_vad.get_mapped_file()), sym_text))
+                                    elif TARGET_LONG_SIZE == 8:
+                                        f.write("VAD: %16x(%16x) %16x --> %16x [%s%s]\n" % (
+                                            current_vad.get_start(),
+                                            current_vad.get_size(),
+                                            last_pc,
+                                            pc,
+                                            ntpath.basename(current_vad.get_mapped_file()), sym_text))
+                                    else:
+                                        raise Exception(
+                                            "[log_coverage()] Unsupported TARGET_LONG_SIZE: %d" % TARGET_LONG_SIZE)
+
+                            data = f_in.read(TARGET_LONG_SIZE + TARGET_LONG_SIZE)
+                            # last_pc, last_size = pc, size
+                            last_pc = pc
             except Exception:
                 import traceback
                 traceback.print_exc()
@@ -247,16 +244,18 @@ def initialize_callbacks(module_hdl, printer):
 
     # Set configuration values
     try:
-        f = open(os.environ["MWMONITOR_COVERAGE_CONF_PATH"], "r")
-        conf_data = json.load(f)
-        f.close()
+        with open(os.environ["MWMONITOR_COVERAGE_CONF_PATH"], "r") as f:
+            conf_data = json.load(f)
         COVERAGE_DUMP_PATH = conf_data.get("coverage_dump_path", None)
         if COVERAGE_DUMP_PATH is None:
             raise ValueError("The json configuration file is not well-formed: fields missing?")
     except Exception as e:
-        pyrebox_print("Could not read or correctly process the configuration file: %s" % str(e))
+        pyrebox_print(
+            f"Could not read or correctly process the configuration file: {str(e)}"
+        )
+
         return
-    
+
     try:
         # Initialize process creation callback
         pyrebox_print("[*]    Initializing callbacks")
@@ -268,4 +267,4 @@ def initialize_callbacks(module_hdl, printer):
         traceback.print_exc()
 
 if __name__ == "__main__":
-    print("[*] Loading python module %s" % (__file__))
+    print(f"[*] Loading python module {__file__}")

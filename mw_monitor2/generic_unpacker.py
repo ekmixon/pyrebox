@@ -114,11 +114,10 @@ def append_log(line):
     global UNPACKER_LOG_PATH
     global UNPACKER_DUMP_PATH
 
-    f = open(UNPACKER_LOG_PATH, "a")
-    if line[-1] != "\n":
-        line += "\n"
-    f.write(line)
-    f.close()
+    with open(UNPACKER_LOG_PATH, "a") as f:
+        if line[-1] != "\n":
+            line += "\n"
+        f.write(line)
 
 
 def generate_dump(pgd, reason):
@@ -129,9 +128,8 @@ def generate_dump(pgd, reason):
     global page_status_x
     global page_status_w
 
-    f = open(os.path.join(UNPACKER_DUMP_PATH, "dump_list.txt"), "a")
-    f.write("DUMP %d - Layer %d - Reason: %s\n" % (dump_counter, current_layer, reason))
-    f.close()
+    with open(os.path.join(UNPACKER_DUMP_PATH, "dump_list.txt"), "a") as f:
+        f.write("DUMP %d - Layer %d - Reason: %s\n" % (dump_counter, current_layer, reason))
     dump([pgd], pyrebox_print, path = os.path.join(UNPACKER_DUMP_PATH, "dump_%d_layer-%d" % (dump_counter, current_layer)))
     if pgd not in page_status_x:
         page_status_x[pgd] = {}
@@ -176,15 +174,18 @@ def mem_write(params):
         mask = 0xFFFFF000 if TARGET_LONG_SIZE == 4 else 0xFFFFFFFFFFFFF000
         page = vaddr & mask
 
-        overlapping_section_maps = [] 
-        # Check if the memory was mapped to file, so we record a file write for such file
-        for base, size, file_offset, file_name in section_maps:
-            if page >= (base & mask) and page < (((base + size) & mask) + 0x1000):
-                overlapping_section_maps.append((base, size, file_offset, file_name))
+        overlapping_section_maps = [
+            (base, size, file_offset, file_name)
+            for base, size, file_offset, file_name in section_maps
+            if page >= (base & mask)
+            and page < (((base + size) & mask) + 0x1000)
+        ]
 
         # If it comes from ntdll and affects to a mapped file, just ignore it, 
         # it is likely due to relocations or loader/stuff and is prone to FPs.
-        if (pc >= ntdll_space[0] and pc < (ntdll_space[0] + ntdll_space[1])) and len(overlapping_section_maps) > 0:
+        if (
+            pc >= ntdll_space[0] and pc < (ntdll_space[0] + ntdll_space[1])
+        ) and overlapping_section_maps:
             return
 
         # Set page write status (update with current layer)
@@ -256,7 +257,7 @@ def block_exec(params):
             append_log("+----- VAD LIST")
             append_log("+----- ========")
             for vad in get_vads(pgd):
-                append_log("+----- " + str(vad))
+                append_log(f"+----- {str(vad)}")
 
             # Update current layer
             current_layer = page_status_x[pgd][page]
@@ -267,7 +268,7 @@ def block_exec(params):
 
             generate_dump(pgd, "Transition to previously written memory page(s)")
 
-            
+
     else:
         # Update page status (execution)
         page_status_x[pgd][page] = current_layer
@@ -482,7 +483,7 @@ def section_map(section_map):
 
             addr = entry[2]
             size = entry[1]
-    
+
             mask = 0xFFFFF000 if TARGET_LONG_SIZE == 4 else 0xFFFFFFFFFFFFF000
             pages_to_add = []
             for w_offset, w_size in written_files[file_name]:
@@ -552,17 +553,19 @@ def initialize_callbacks(module_hdl, printer):
 
     # Set configuration values
     try:
-        f = open(os.environ["GENERIC_UNPACKER_CONF_PATH"], "r")
-        conf_data = json.load(f)
-        f.close()
+        with open(os.environ["GENERIC_UNPACKER_CONF_PATH"], "r") as f:
+            conf_data = json.load(f)
         UNPACKER_LOG_PATH = conf_data.get("unpacker_log_path", None)
         UNPACKER_DUMP_PATH = conf_data.get("unpacker_dump_path", None)
         if UNPACKER_LOG_PATH is None or UNPACKER_DUMP_PATH is None:
             raise ValueError("The json configuration file is not well-formed: fields missing?")
     except Exception as e:
-        pyrebox_print("Could not read or correctly process the configuration file: %s" % str(e))
+        pyrebox_print(
+            f"Could not read or correctly process the configuration file: {str(e)}"
+        )
+
         return
-    
+
     try:
         # Initialize log
         init_log()
@@ -582,4 +585,4 @@ def initialize_callbacks(module_hdl, printer):
         traceback.print_exc()
 
 if __name__ == "__main__":
-    print("[*] Loading python module %s" % (__file__))
+    print(f"[*] Loading python module {__file__}")

@@ -75,9 +75,8 @@ def serialize_calls():
     from interproc import interproc_data
     global pyrebox_print
     try:
-        f_out = open(APITRACER_BIN_LOG_PATH, "w")
-        pickle.dump(interproc_data.get_processes(), f_out)
-        f_out.close()
+        with open(APITRACER_BIN_LOG_PATH, "w") as f_out:
+            pickle.dump(interproc_data.get_processes(), f_out)
     except Exception:
         traceback.print_exc()
         pyrebox_print(traceback.print_stack())
@@ -103,12 +102,12 @@ def log_calls():
                     elif TARGET_LONG_SIZE == 8:
                         f_out.write("\n\nVAD [%016x - %016x] - %s\n\n" % (vad.get_start(), vad.get_size(), (vad.get_mapped_file() if vad.get_mapped_file() is not None else "Not file mapped")))
                     for data in vad.get_calls():
-                        f_out.write("%s" % data[2].__str__())
+                        f_out.write(f"{data[2].__str__()}")
 
             if len(proc.get_other_calls()) > 0:
                 f_out.write("\n\n OTHER CALLS...\n\n")
                 for call in proc.get_other_calls():
-                    f_out.write("%s" % data[2].__str__())
+                    f_out.write(f"{data[2].__str__()}")
         if f_out is not None:
             f_out.close()
     except Exception as e:
@@ -116,13 +115,13 @@ def log_calls():
         pyrebox_print(traceback.print_exc())
 
     # Output ordered calls
-    f_out = open(APITRACER_TEXT_LOG_PATH + ".ordered", "w")
+    f_out = open(f"{APITRACER_TEXT_LOG_PATH}.ordered", "w")
     try:
         for proc in interproc_data.get_processes():
             f_out.write("Process (PID: %x) %s\n" %
                         (proc.get_pid(), proc.get_proc_name()))
             for data in proc.get_all_calls():
-                f_out.write("%s" % data[2].__str__())
+                f_out.write(f"{data[2].__str__()}")
         if f_out is not None:
             f_out.close()
     except Exception as e:
@@ -236,10 +235,10 @@ def opcodes_ret(addr_from, addr_to, data, callback_name, argument_parser, mod, f
             argument_parser.update_return(cpu.EAX)
         elif TARGET_LONG_SIZE == 8:
             argument_parser.update_return(cpu.RAX)
-        data.set_out_args([arg for arg in argument_parser.get_out_args()])
+        data.set_out_args(list(argument_parser.get_out_args()))
         data.set_ret(argument_parser.get_ret())
     except Exception as e:
-        pyrebox_print("Exception: %s" % str(e))
+        pyrebox_print(f"Exception: {str(e)}")
     finally:
         return
 
@@ -292,23 +291,29 @@ def opcodes(params, cb_name, proc):
         matched = False
         # Check if the API is in the list (included or excluded)
         for rule in APITRACER_RULES["rules"]:
-            if rule["mod"] == "" or fnmatch.fnmatch(mod_fullname.lower(), rule["mod"].lower()):
-                if rule["fun"] == "" or fnmatch.fnmatch(fun.lower(), rule["fun"].lower()):
-                    if "from_mod" in rule and rule["from_mod"] != "":
-                        if caller_module_name is not None:
-                            if fnmatch.fnmatch(caller_module_name, rule["from_mod"].lower()):
-                                matched = True
-                                if rule["action"] == "reject":
-                                    return
-                                else:
-                                    break
-                                break
-                    else:  
+            if (
+                rule["mod"] == ""
+                or fnmatch.fnmatch(mod_fullname.lower(), rule["mod"].lower())
+            ) and (
+                rule["fun"] == ""
+                or fnmatch.fnmatch(fun.lower(), rule["fun"].lower())
+            ):
+                if "from_mod" in rule and rule["from_mod"] != "":
+                    if caller_module_name is not None and fnmatch.fnmatch(
+                        caller_module_name, rule["from_mod"].lower()
+                    ):
                         matched = True
                         if rule["action"] == "reject":
                             return
                         else:
                             break
+                        break
+                else:  
+                    matched = True
+                    if rule["action"] == "reject":
+                        return
+                    else:
+                        break
 
         # Apply default policy if not matched: 
         if not matched and APITRACER_RULES["policy"] == "reject":
@@ -321,21 +326,23 @@ def opcodes(params, cb_name, proc):
                 ret_addr = struct.unpack("<I", ret_addr_val)[0]
             except Exception as e:
                 ret_addr = 0
-                pyrebox_print("Could not read return address on API tracer: %s" % str(e))
+                pyrebox_print(f"Could not read return address on API tracer: {str(e)}")
         elif TARGET_LONG_SIZE == 8:
             try:
                 ret_addr_val = api.r_va(pgd, cpu.RSP, 8)
                 ret_addr = struct.unpack("<Q", ret_addr_val)[0]
             except Exception as e:
-                ret_addr = 0 
-                pyrebox_print("Could not read return address on API tracer: %s" % str(e))
+                ret_addr = 0
+                pyrebox_print(f"Could not read return address on API tracer: {str(e)}")
 
-        is_64_bit_dll = True
-        if TARGET_LONG_SIZE == 4 or (TARGET_LONG_SIZE == 8 and proc.is_wow64() and "windows\\syswow64" in mod_fullname.lower()):
-            is_64_bit_dll = False
+        is_64_bit_dll = TARGET_LONG_SIZE != 4 and (
+            TARGET_LONG_SIZE != 8
+            or not proc.is_wow64()
+            or "windows\\syswow64" not in mod_fullname.lower()
+        )
 
         if APITRACER_LIGHT_MODE:
-            bits = 32 if not is_64_bit_dll else 64
+            bits = 64 if is_64_bit_dll else 32
             if real_api_addr == next_pc:
                 if TARGET_LONG_SIZE == 4:
                     proc.add_call(pc, real_api_addr, "[PID: %x] (%d) %08x --> %s:%s(%08x) --> %08x\n" % (
@@ -343,13 +350,12 @@ def opcodes(params, cb_name, proc):
                 elif TARGET_LONG_SIZE == 8:
                     proc.add_call(pc, real_api_addr, "[PID: %x] (%d) %016x --> %s:%s(%016x) --> %016x\n" % (
                         proc.get_pid(), bits, pc, mod_fullname, fun, real_api_addr, ret_addr))
-            else:
-                if TARGET_LONG_SIZE == 4:
-                    proc.add_call(pc, real_api_addr, "[PID: %x] (%d) %08x --> %s:%s(+%x)(%08x) --> %08x\n" % (
-                        proc.get_pid(), bits, pc, mod_fullname, fun, (next_pc - real_api_addr), next_pc, ret_addr))
-                elif TARGET_LONG_SIZE == 8:
-                    proc.add_call(pc, real_api_addr, "[PID: %x] (%d) %016x --> %s:%s(+%x)(%016x) --> %016x\n" % (
-                        proc.get_pid(), bits, pc, mod_fullname, fun, (next_pc - real_api_addr), next_pc, ret_addr))
+            elif TARGET_LONG_SIZE == 4:
+                proc.add_call(pc, real_api_addr, "[PID: %x] (%d) %08x --> %s:%s(+%x)(%08x) --> %08x\n" % (
+                    proc.get_pid(), bits, pc, mod_fullname, fun, (next_pc - real_api_addr), next_pc, ret_addr))
+            elif TARGET_LONG_SIZE == 8:
+                proc.add_call(pc, real_api_addr, "[PID: %x] (%d) %016x --> %s:%s(+%x)(%016x) --> %016x\n" % (
+                    proc.get_pid(), bits, pc, mod_fullname, fun, (next_pc - real_api_addr), next_pc, ret_addr))
             return
 
         data = APICallData()
@@ -358,16 +364,17 @@ def opcodes(params, cb_name, proc):
         data.set_fun(fun)
         data.set_ret_addr(ret_addr)
 
-        if not is_64_bit_dll:
-            argument_parser = ArgumentParser(cpu, cpu.ESP, mod, fun, 32)
-        else:
-            argument_parser = ArgumentParser(cpu, cpu.RSP, mod, fun, 64)
+        argument_parser = (
+            ArgumentParser(cpu, cpu.RSP, mod, fun, 64)
+            if is_64_bit_dll
+            else ArgumentParser(cpu, cpu.ESP, mod, fun, 32)
+        )
 
         if not argument_parser.in_db():
             #pyrebox_print("API function not present in db: %s - %s" % (mod, fun))
             return
 
-        data.set_in_args([arg for arg in argument_parser.get_in_args()])
+        data.set_in_args(list(argument_parser.get_in_args()))
 
         # Add the call as soon as it is produced, and update
         # the output parameters on return
@@ -412,8 +419,7 @@ def module_load(params):
     name = params["name"]
     fullname = params["fullname"]
 
-    proc = interproc_data.get_process_by_pgd(pgd)
-    if proc:
+    if proc := interproc_data.get_process_by_pgd(pgd):
         proc.update_symbols()
 
 

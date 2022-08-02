@@ -61,7 +61,7 @@ def get_module(pid, pgd, base):
 
 def add_module(pid, pgd, base, mod):
     global __modules
-    if not (pid, pgd) in __modules:
+    if (pid, pgd) not in __modules:
         __modules[(pid, pgd)] = {}
     __modules[(pid, pgd)][base] = mod
 
@@ -71,10 +71,7 @@ def add_symbols(mod_full_name, syms):
 
 def get_symbols(mod_full_name):
     global __symbols
-    if mod_full_name in __symbols:
-        return __symbols[mod_full_name]
-    else:
-        return {}
+    return __symbols[mod_full_name] if mod_full_name in __symbols else {}
 
 def has_symbols(mod_full_name):
     global __symbols
@@ -90,9 +87,8 @@ def load_symbols_from_cache_file():
     global symbol_cache_path
     if symbol_cache_path is not None and os.path.isfile(symbol_cache_path):
         try:
-            f = open(symbol_cache_path, "r")
-            __symbols = json.loads(f.read())
-            f.close()
+            with open(symbol_cache_path, "r") as f:
+                __symbols = json.loads(f.read())
         except Exception as e:
             pp_error("Error while reading symbols from %s: %s\n" % (symbol_cache_path, str(e)))
 
@@ -102,9 +98,8 @@ def save_symbols_to_cache_file():
     global __symbols
     global symbol_cache_path
     if symbol_cache_path is not None:
-        f = open(symbol_cache_path, "w")
-        f.write(json.dumps(__symbols))
-        f.close()
+        with open(symbol_cache_path, "w") as f:
+            f.write(json.dumps(__symbols))
 
 class Module:
     def __init__(self, base, size, pid, pgd, checksum, name, fullname):
@@ -139,10 +134,7 @@ class Module:
         return self.__fullname
 
     def get_symbols(self):
-        if self.__symbols is None:
-            return []
-        else:
-            return self.__symbols
+        return [] if self.__symbols is None else self.__symbols
 
     def are_symbols_resolved(self):
         return (self.__symbols is not None)
@@ -206,34 +198,36 @@ def update_modules(proc_pgd, update_symbols=False):
 
 def set_modules_non_present(pid, pgd):
     global __modules
-    if pid is not None:
-        if (pid, pgd) in __modules:
-            for base, mod in __modules[(pid, pgd)].iteritems():
-                mod.set_present(False)
-    else:
+    if pid is None:
         for pid, _pgd in __modules.keys():
-            if _pgd == pgd:
-                if (pid, pgd) in __modules:
-                    for base, mod in __modules[(pid, _pgd)].iteritems():
-                        mod.set_present(False)
+            if _pgd == pgd and (pid, pgd) in __modules:
+                for base, mod in __modules[(pid, _pgd)].iteritems():
+                    mod.set_present(False)
+
+    elif (pid, pgd) in __modules:
+        for base, mod in __modules[(pid, pgd)].iteritems():
+            mod.set_present(False)
 
 def clean_non_present_modules(pid, pgd):
     from api_internal import dispatch_module_remove_callback
     global __modules
 
     mods_to_remove = []
-    if pid is not None:
-        if (pid, pgd) in __modules:
-            for base, mod in __modules[(pid, pgd)].iteritems():
-                if not mod.is_present():
-                    mods_to_remove.append((pid, pgd, base))
-    else:
+    if pid is None:
         for pid, _pgd in __modules.keys():
-            if _pgd == pgd:
-                if (pid, _pgd) in __modules:
-                    for base, mod in __modules[(pid, _pgd)].iteritems():
-                        if not mod.is_present():
-                            mods_to_remove.append((pid, pgd, base))
+            if _pgd == pgd and (pid, _pgd) in __modules:
+                mods_to_remove.extend(
+                    (pid, pgd, base)
+                    for base, mod in __modules[(pid, _pgd)].iteritems()
+                    if not mod.is_present()
+                )
+
+    elif (pid, pgd) in __modules:
+        mods_to_remove.extend(
+            (pid, pgd, base)
+            for base, mod in __modules[(pid, pgd)].iteritems()
+            if not mod.is_present()
+        )
 
     for pid, pgd, base in mods_to_remove:
         # Callback notification
@@ -278,10 +272,15 @@ def get_thread_id(thread_number, thread_list):
         return long(0)
 
 def get_thread_description(thread_id, thread_list):
-    for element in thread_list:
-        if element['id'] == thread_id:
-            return "%s(%x) - %x" % (element['process_name'], element['pid'], element['tid'])
-    return ""
+    return next(
+        (
+            "%s(%x) - %x"
+            % (element['process_name'], element['pid'], element['tid'])
+            for element in thread_list
+            if element['id'] == thread_id
+        ),
+        "",
+    )
 
 def get_running_thread_first_cpu(thread_list):
     for element in thread_list:
@@ -292,10 +291,7 @@ def get_running_thread_first_cpu(thread_list):
     return long(thread_list[0]['id'])
 
 def does_thread_exist(thread_id, thread_list):
-    for element in thread_list:
-        if element['id'] == thread_id:
-            return True
-    return False
+    return any(element['id'] == thread_id for element in thread_list)
 
 def str_to_val(buf, str_size):
     import struct
@@ -313,9 +309,9 @@ def str_to_val(buf, str_size):
         raise NotImplementedError("[val_to_str - gdb_write_thread_register] Not implemented")
 
     if conf_m.endianess == "l":
-        struct_letter = "<" + struct_letter
+        struct_letter = f"<{struct_letter}"
     else:
-        struct_letter = ">" + struct_letter
+        struct_letter = f">{struct_letter}"
 
     try:
         ret_val = struct.unpack(struct_letter, buf)[0]
@@ -339,9 +335,9 @@ def val_to_str(val, str_size):
         raise NotImplementedError("[val_to_str - gdb_read_thread_register] Not implemented")
 
     if conf_m.endianess == "l":
-        struct_letter = "<" + struct_letter
+        struct_letter = f"<{struct_letter}"
     else:
-        struct_letter = ">" + struct_letter
+        struct_letter = f">{struct_letter}"
 
     try:
         ret_val = struct.pack(struct_letter, val)
@@ -405,7 +401,6 @@ def gdb_read_thread_register(thread_id, thread_list, gdb_register_index):
         if val == -1:
             val = 0
         return val_to_str(val, str_size)
-    # If the thread is not running, read it from the KTRAP_FRAME
     else:
         if os_family == OS_FAMILY_WIN:
             from windows_vmi import win_read_thread_register_from_ktrap_frame
@@ -413,7 +408,10 @@ def gdb_read_thread_register(thread_id, thread_list, gdb_register_index):
             try:
                 val = win_read_thread_register_from_ktrap_frame(thread, gdb_map[gdb_register_index][1])
             except Exception as e:
-                pp_debug("Exception after win_read_thread_register_from_ktrap_frame: " + str(e))
+                pp_debug(
+                    f"Exception after win_read_thread_register_from_ktrap_frame: {str(e)}"
+                )
+
             if val == -1:
                 val = 0
             return val_to_str(val, str_size)
@@ -462,17 +460,15 @@ def gdb_write_thread_register(thread_id, thread_list, gdb_register_index, buf):
         val = str_to_val(buf, str_size)
         w_r(cpu_index, gdb_map[gdb_register_index][0], val)
         return str_size
-    # If the thread is not running, read it from the KTRAP_FRAME
     else:
         if os_family == OS_FAMILY_WIN:
             from windows_vmi import win_read_thread_register_from_ktrap_frame
             try:
                 bytes_written = win_write_thread_register_in_ktrap_frame(thread, gdb_map[gdb_register_index][1], buf, str_size)
             except Exception as e:
-                pp_debug("Exception after win_write_thread_register_in_ktrap_frame: " + str(e))
-            if bytes_written < 0:
-                bytes_written = 0
-            return bytes_written 
+                pp_debug(f"Exception after win_write_thread_register_in_ktrap_frame: {str(e)}")
+            bytes_written = max(bytes_written, 0)
+            return bytes_written
         elif os_family == OS_FAMILY_LINUX:
             raise NotImplementedError("gdb_write_thread_register not implemented yet on Linux guests")
 
@@ -509,17 +505,15 @@ def gdb_set_cpu_pc(thread_id, thread_list, val):
     if cpu_index is not None:
         w_r(cpu_index, gdb_map[gdb_register_index][0], val)
         return str_size
-    # If the thread is not running, read it from the KTRAP_FRAME
     else:
         if os_family == OS_FAMILY_WIN:
             from windows_vmi import win_read_thread_register_from_ktrap_frame
             try:
                 bytes_written = win_write_thread_register_in_ktrap_frame(thread, gdb_map[gdb_register_index][1], val_to_str(val, str_size), str_size)
             except Exception as e:
-                pp_debug("Exception after win_write_thread_register_in_ktrap_frame: " + str(e))
-            if bytes_written < 0:
-                bytes_written = 0
-            return bytes_written 
+                pp_debug(f"Exception after win_write_thread_register_in_ktrap_frame: {str(e)}")
+            bytes_written = max(bytes_written, 0)
+            return bytes_written
         elif os_family == OS_FAMILY_LINUX:
             raise NotImplementedError("gdb_set_cpu_pc not implemented yet on Linux guests")
 
@@ -532,20 +526,15 @@ def gdb_get_register_size(gdb_register_index):
     else:
         raise NotImplementedError("[gdb_get_register_size] Architecture not supported yet")
 
-    if gdb_register_index in gdb_map:
-        return gdb_map[gdb_register_index][2]
-    else:
-        return 0
+    return gdb_map[gdb_register_index][2] if gdb_register_index in gdb_map else 0
 
 def gdb_memory_rw_debug(thread_id, thread_list, addr, length, buf, is_write):
     ''' Read / Write memory '''
 
-    thread = None
-    # First, check if we can read the register from the CPU object
-    for element in thread_list:
-        if element['id'] == thread_id:
-            thread = element
-            break
+    thread = next(
+        (element for element in thread_list if element['id'] == thread_id),
+        None,
+    )
 
     if thread is None:
         return None
@@ -558,8 +547,7 @@ def gdb_memory_rw_debug(thread_id, thread_list, addr, length, buf, is_write):
         try:
             from api import r_va
             import binascii
-            mem = r_va(thread['pgd'], addr, length)
-            return mem
+            return r_va(thread['pgd'], addr, length)
         except Exception as e:
             raise e
 
@@ -573,11 +561,10 @@ def gdb_breakpoint_callback(addr, pgd, length, bp_type, params):
     import c_api
     import api
 
-    if bp_type == GDB_BREAKPOINT_SW or bp_type == GDB_BREAKPOINT_HW:
-        cpu_index = params["cpu_index"]
+    cpu_index = params["cpu_index"]
+    if bp_type in [GDB_BREAKPOINT_SW, GDB_BREAKPOINT_HW]:
         cpu = params["cpu"]
     else:
-        cpu_index = params["cpu_index"]
         addr = params["vaddr"]
         size = params["size"]
         haddr = params["haddr"]
@@ -602,13 +589,10 @@ def gdb_breakpoint_insert(thread_id, thread_list, addr, length, bp_type):
     from api import BP
     import functools
 
-    # Obtain PGD from thread
-    thread = None
-    # First, check if we can read the register from the CPU object
-    for element in thread_list:
-        if element['id'] == thread_id:
-            thread = element
-            break
+    thread = next(
+        (element for element in thread_list if element['id'] == thread_id),
+        None,
+    )
 
     if thread is None:
         return 0 
@@ -638,14 +622,14 @@ def gdb_breakpoint_insert(thread_id, thread_list, addr, length, bp_type):
         gdb_breakpoint_list[bp_type][pgd][addr].append(bp)
         nb_breakpoints_added += 1
 
-    if bp_type == GDB_WATCHPOINT_WRITE or bp_type == GDB_WATCHPOINT_ACCESS:
+    if bp_type in [GDB_WATCHPOINT_WRITE, GDB_WATCHPOINT_ACCESS]:
         f = functools.partial(gdb_breakpoint_callback, addr, pgd, length, bp_type, new_style=True)
         bp = BP(addr=addr, pgd=pgd, size=length, typ=BP.MEM_WRITE, func=f)
         bp.enable()
         gdb_breakpoint_list[bp_type][pgd][addr].append(bp)
         nb_breakpoints_added += 1
 
-    if bp_type == GDB_WATCHPOINT_READ or bp_type == GDB_WATCHPOINT_ACCESS:
+    if bp_type in [GDB_WATCHPOINT_READ, GDB_WATCHPOINT_ACCESS]:
         f = functools.partial(gdb_breakpoint_callback, addr, pgd, length, bp_type, new_style=True)
         bp = BP(addr=addr, pgd=pgd, size=length, typ=BP.MEM_READ, func=f)
         bp.enable()
@@ -658,13 +642,10 @@ def gdb_breakpoint_remove(thread_id, thread_list, addr, length, bp_type):
     ''' Remove a breakpoint from GDB'''
     global gdb_breakpoint_list
 
-    # Obtain PGD from thread
-    thread = None
-    # First, check if we can read the register from the CPU object
-    for element in thread_list:
-        if element['id'] == thread_id:
-            thread = element
-            break
+    thread = next(
+        (element for element in thread_list if element['id'] == thread_id),
+        None,
+    )
 
     if thread is None:
         return False 
@@ -674,17 +655,19 @@ def gdb_breakpoint_remove(thread_id, thread_list, addr, length, bp_type):
     nb_breakpoints_removed = 0
     bps_to_keep = []
     # Disable the corresponding breakpoints
-    if bp_type in gdb_breakpoint_list:
-        if pgd in gdb_breakpoint_list[bp_type]:
-            if addr in gdb_breakpoint_list[bp_type][pgd]:
-                for bp in gdb_breakpoint_list[bp_type][pgd][addr]:
-                    if bp.get_size() == length:
-                        bp.disable()
-                    else:
-                        bps_to_keep.append(bp)
+    if (
+        bp_type in gdb_breakpoint_list
+        and pgd in gdb_breakpoint_list[bp_type]
+        and addr in gdb_breakpoint_list[bp_type][pgd]
+    ):
+        for bp in gdb_breakpoint_list[bp_type][pgd][addr]:
+            if bp.get_size() == length:
+                bp.disable()
+            else:
+                bps_to_keep.append(bp)
 
-                nb_breakpoints_removed = len(gdb_breakpoint_list[bp_type][pgd][addr]) - len(bps_to_keep)
-                gdb_breakpoint_list[bp_type][pgd][addr] = bps_to_keep
+        nb_breakpoints_removed = len(gdb_breakpoint_list[bp_type][pgd][addr]) - len(bps_to_keep)
+        gdb_breakpoint_list[bp_type][pgd][addr] = bps_to_keep
 
     return nb_breakpoints_removed
 

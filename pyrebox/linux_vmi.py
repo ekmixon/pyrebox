@@ -69,8 +69,7 @@ def linux_get_offsets():
                 long(proc_exit_connector_offset))
 
     except Exception as e:
-        pp_error("Could not retrieve symbols for profile initialization %s" %
-                 str(e))
+        pp_error(f"Could not retrieve symbols for profile initialization {str(e)}")
         return None
 
 
@@ -83,13 +82,13 @@ def linux_init_address_space():
             addr_space = utils.load_as(config)
         except BaseException as e:
             # Return silently
-            print (str(e))
+            print(e)
             conf_m.addr_space = None
             return False
         conf_m.addr_space = addr_space
         return True
     except Exception as e:
-        pp_error("Could not load volatility address space: %s" % str(e))
+        pp_error(f"Could not load volatility address space: {str(e)}")
 
 
 def linux_insert_module(task, pid, pgd, base, size, basename, fullname, update_symbols=False):
@@ -166,9 +165,9 @@ def linux_insert_module(task, pid, pgd, base, size, basename, fullname, update_s
                             # 00000000000113f0 T pthread_getaffinity_np@GLIBC_2.3.3
                             # 00000000000113a0 T
                             # pthread_getaffinity_np@@GLIBC_2.3.4
-                            sym_name = sym_name + "_"
+                            sym_name = f"{sym_name}_"
                             while sym_name in syms and syms[sym_name] != sym_offset:
-                                sym_name = sym_name + "_"
+                                sym_name = f"{sym_name}_"
                             if sym_name not in syms:
                                 syms[sym_name] = sym_offset
                     else:
@@ -232,9 +231,9 @@ def linux_insert_kernel_module(module, base, size, basename, fullname, update_sy
                             # 00000000000113f0 T pthread_getaffinity_np@GLIBC_2.3.3
                             # 00000000000113a0 T
                             # pthread_getaffinity_np@@GLIBC_2.3.4
-                            sym_name = sym_name + "_"
+                            sym_name = f"{sym_name}_"
                             while sym_name in syms and syms[sym_name] != sym_offset:
-                                sym_name = sym_name + "_"
+                                sym_name = f"{sym_name}_"
                             if sym_name not in syms:
                                 syms[sym_name] = sym_offset
                     else:
@@ -243,9 +242,7 @@ def linux_insert_kernel_module(module, base, size, basename, fullname, update_sy
                 add_symbols(fullname, syms)
             except Exception as e:
                 # Probably could not fetch the symbols for this module
-                pp_error("%s" % str(e))
-                pass
-
+                pp_error(f"{str(e)}")
         mod.set_symbols(get_symbols(fullname))
 
     return None
@@ -268,18 +265,12 @@ def linux_update_modules(pgd, update_symbols=False):
         # entries and detect when a module is added
         # or removed
         list_entry_size = None
-        list_entry_regions = []
-
         # Now, update the kernel modules
         modules_addr = conf_m.addr_space.profile.get_symbol("modules")
         modules = obj.Object(
             "list_head", vm=conf_m.addr_space, offset=modules_addr)
 
-        # Add the initial list pointer as a list entry
-        # modules_addr is the offset of a list_head (2 pointers) that points to the
-        # first entry of a module list of type module.
-        list_entry_regions.append((modules_addr, modules_addr, modules.size()))
-
+        list_entry_regions = [(modules_addr, modules_addr, modules.size())]
         # Mark all modules as non-present
         set_modules_non_present(0, 0)
 
@@ -316,43 +307,47 @@ def linux_update_modules(pgd, update_symbols=False):
             # Now, check if there is "module_init" region, which will contain init sections such as .init.text , init
             # readonly and writable data...
             if module.module_init != 0 and module.init_size != 0:
-                linux_insert_kernel_module(module, module.module_init.v(), module.init_size.v(),
-                                           module.name + "/module_init", module.name + "/module_init",
-                                           update_symbols)
-            else:
-                # If there is no module_init, check if there is any section
-                # outside the module_core region
-                secs = []
-                for section in module.get_sections():
-                    if section.address < module.module_core or section.address >= (module.module_core + module.core_size):
-                        secs.append(section)
-                if len(secs) > 0:
-                    # Now, compute the range of sections and put them into a
-                    # module_init module block
-                    secs = sorted(secs, key=lambda k: k.address)
-                    start = secs[0].address
-                    # Address of the last section + 0x4000 cause we do not know
-                    # the size
-                    size = (secs[-1].address + 0x4000) - secs[0].address
-                    linux_insert_kernel_module(module, start, size,
-                                               module.name + "/module_init", module.name + "/module_init", update_symbols)
+                linux_insert_kernel_module(
+                    module,
+                    module.module_init.v(),
+                    module.init_size.v(),
+                    f"{module.name}/module_init",
+                    f"{module.name}/module_init",
+                    update_symbols,
+                )
+
+            elif secs := [
+                section
+                for section in module.get_sections()
+                if section.address < module.module_core
+                or section.address >= (module.module_core + module.core_size)
+            ]:
+                # Now, compute the range of sections and put them into a
+                # module_init module block
+                secs = sorted(secs, key=lambda k: k.address)
+                start = secs[0].address
+                # Address of the last section + 0x4000 cause we do not know
+                # the size
+                size = (secs[-1].address + 0x4000) - secs[0].address
+                linux_insert_kernel_module(
+                    module,
+                    start,
+                    size,
+                    f"{module.name}/module_init",
+                    f"{module.name}/module_init",
+                    update_symbols,
+                )
+
 
         # Remove all the modules that are not marked as present
         clean_non_present_modules(0, 0)
         return list_entry_regions
 
-    # If pgd != 0 was requested
-    
-    tasks = []
-
     init_task_addr = conf_m.addr_space.profile.get_symbol("init_task")
     init_task = obj.Object(
         "task_struct", vm=conf_m.addr_space, offset=init_task_addr)
 
-    # walk the ->tasks list, note that this will *not* display "swapper"
-    for task in init_task.tasks:
-        tasks.append(task)
-
+    tasks = list(init_task.tasks)
     # List of tasks (threads) whose pgd is equal to the pgd to update
     tasks_to_update = []
 

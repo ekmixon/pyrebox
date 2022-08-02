@@ -42,12 +42,9 @@ def dump_command(line):
         param = line.split()[0].strip()
         found = find_procs(param)
         if len(found) == 0:
-            mwmon.printer("Process %s not found" % param)
+            mwmon.printer(f"Process {param} not found")
         elif len(found) == 1 or (len(found) == 2 and found[0][1] == found[1][1]):
-            if found[0][0] == 0:
-                # kernel process
-                pass
-            else:
+            if found[0][0] != 0:
                 pid, pgd, pname = found[0]
                 dump(pid=pid)
         else:
@@ -95,8 +92,7 @@ def dumper_start_monitoring_process(new_proc):
             fun = terms[1]
             # Add a bp to the list of symbol based breakpoints for the process
             if (dll, fun) in new_proc.breakpoints:
-                mwmon.printer(
-                    "Cannot set dump callback on standard function %s" % fun)
+                mwmon.printer(f"Cannot set dump callback on standard function {fun}")
                 return
             new_proc.breakpoints[(dll, fun)] = None
             new_proc.bp_funcs[(dll, fun)] = (dump, False)
@@ -109,12 +105,13 @@ def dumper_start_monitoring_process(new_proc):
                 from_addr = int(terms[2], 16)
             except Exception as e:
                 mwmon.printer(
-                    "Dumper - dump_at: Wrong address value, must specify an hex number : %s" % str(e))
+                    f"Dumper - dump_at: Wrong address value, must specify an hex number : {str(e)}"
+                )
+
                 return
             # Add a bp to the list of symbol based breakpoints for the process
             if (dll, fun) in new_proc.breakpoints:
-                mwmon.printer(
-                    "Cannot set dump callback on standard function %s" % fun)
+                mwmon.printer(f"Cannot set dump callback on standard function {fun}")
                 return
             new_proc.breakpoints[(dll, fun)] = None
             new_proc.bp_funcs[(dll, fun)] = (

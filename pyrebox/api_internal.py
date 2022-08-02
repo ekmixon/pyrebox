@@ -58,7 +58,7 @@ def module_change_callback(pgd, bp_vaddr, bp_haddr, params):
     # In this way we avoid triggering one update operation for every
     # modified pointer (inserting a module requires to change several
     # pointers, due to the different linked lists).
-   
+
     # Return if it points inside a module that we have already added to our list
     for module_base, hook_addr, hook_size in module_load_remove_breakpoints[pgd]:
         if data >= module_base and data < (hook_addr + hook_size):
@@ -69,10 +69,11 @@ def module_change_callback(pgd, bp_vaddr, bp_haddr, params):
     if hooking_points is not None:
         # Update hooking points
         # 1) Remove the breakpoints not used anymore
-        bps_to_remove = []
-        for hp in module_load_remove_breakpoints[pgd]:
-            if hp not in hooking_points:
-                bps_to_remove.append(hp)
+        bps_to_remove = [
+            hp
+            for hp in module_load_remove_breakpoints[pgd]
+            if hp not in hooking_points
+        ]
 
         for hp in bps_to_remove:
             module_load_remove_breakpoints[pgd][hp].disable()
@@ -159,7 +160,10 @@ def register_module_load_callback(pgd, callback_name, callback_function):
 
     for pgd in module_load_callbacks:
         if callback_name in module_load_callbacks[pgd]:
-            raise ValueError("Cannot register 2 callbacks with the same name! %s" % callback_name)
+            raise ValueError(
+                f"Cannot register 2 callbacks with the same name! {callback_name}"
+            )
+
 
     module_load_callbacks[pgd][callback_name] = callback_function
 
@@ -186,13 +190,16 @@ def register_module_remove_callback(pgd, callback_name, callback_function):
     :param callback_function: The callback function
     :type callback_function: func(pid, pgd, base, size, name, fullname)
     '''
-    if not pgd in module_remove_callbacks:
+    if pgd not in module_remove_callbacks:
         module_remove_callbacks[pgd] = {}
         module_load_callbacks[pgd] = {}
 
     for pgd in module_remove_callbacks:
         if callback_name in module_remove_callbacks[pgd]:
-            raise ValueError("Cannot register 2 callbacks with the same name! %s" % callback_name)
+            raise ValueError(
+                f"Cannot register 2 callbacks with the same name! {callback_name}"
+            )
+
 
     module_remove_callbacks[pgd][callback_name] = callback_function
 
@@ -345,15 +352,15 @@ def print_internal(plugin_name, string_to_print):
         c_api.plugin_print_internal("\n[%s]\n" % (plugin_name))
         c_api.plugin_print_internal("-" * (2 + len(plugin_name)) + "\n")
         c_api.plugin_print_internal("%s\n" % string_to_print)
-    elif num_breaks == 1 and string_to_print[-1] == "\n":
-        c_api.plugin_print_internal("[%s] %s" % (plugin_name, string_to_print))
+    elif num_breaks == 1:
+        c_api.plugin_print_internal(f"[{plugin_name}] {string_to_print}")
     else:
         c_api.plugin_print_internal("\n[%s]\n" % (plugin_name))
         c_api.plugin_print_internal("-" * (2 + len(plugin_name)) + "\n")
         if string_to_print[-1] != "\n":
             c_api.plugin_print_internal("%s\n" % string_to_print)
         else:
-            c_api.plugin_print_internal("%s" % string_to_print)
+            c_api.plugin_print_internal(f"{string_to_print}")
     return None
 
 

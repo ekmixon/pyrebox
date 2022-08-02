@@ -234,41 +234,42 @@ class BasicArgument(AbstractArgument):
     def dereference(self, argument_parser=None):
         # If it is an address, resolve the value each time we query dereference(),
         # for cases in which we have input and output function arguments
-        if self.addr is not None:
-            parsed_value = None
-            val = read(self.pgd, self.addr, len(self))
-            if self.typ == NKT_DBFUNDTYPE_SignedByte:
-                parsed_value = struct.unpack("<b", val)[0]
-            elif self.typ == NKT_DBFUNDTYPE_UnsignedByte:
-                parsed_value = struct.unpack("<B", val)[0]
-            elif self.typ == NKT_DBFUNDTYPE_SignedWord:
-                parsed_value = struct.unpack("<h", val)[0]
-            elif self.typ == NKT_DBFUNDTYPE_UnsignedWord:
-                parsed_value = struct.unpack("<H", val)[0]
-            elif self.typ == NKT_DBFUNDTYPE_SignedDoubleWord:
-                parsed_value = struct.unpack("<i", val)[0]
-            elif self.typ == NKT_DBFUNDTYPE_UnsignedDoubleWord:
-                parsed_value = struct.unpack("<I", val)[0]
-            elif self.typ == NKT_DBFUNDTYPE_SignedQuadWord:
-                parsed_value = struct.unpack("<q", val)[0]
-            elif self.typ == NKT_DBFUNDTYPE_UnsignedQuadWord:
-                parsed_value = struct.unpack("<Q", val)[0]
-            elif self.typ == NKT_DBFUNDTYPE_Float:
-                parsed_value = struct.unpack("<f", val)[0]
-            elif self.typ == NKT_DBFUNDTYPE_Double:
-                parsed_value = struct.unpack("<d", val)[0]
-            elif self.typ == NKT_DBFUNDTYPE_LongDouble:
-                parsed_value = struct.unpack("<d", val)[0]
-            elif self.typ == NKT_DBFUNDTYPE_Void:
-                return
-            elif self.typ == NKT_DBFUNDTYPE_AnsiChar:
-                parsed_value = struct.unpack("<B", val)[0]
-            elif self.typ == NKT_DBFUNDTYPE_WideChar:
-                try:
-                    parsed_value = val.decode("utf-16")
-                except Exception:
-                    parsed_value = u"\x00"
-            self.val = parsed_value
+        if self.addr is None:
+            return
+        parsed_value = None
+        val = read(self.pgd, self.addr, len(self))
+        if self.typ == NKT_DBFUNDTYPE_SignedByte:
+            parsed_value = struct.unpack("<b", val)[0]
+        elif self.typ == NKT_DBFUNDTYPE_UnsignedByte:
+            parsed_value = struct.unpack("<B", val)[0]
+        elif self.typ == NKT_DBFUNDTYPE_SignedWord:
+            parsed_value = struct.unpack("<h", val)[0]
+        elif self.typ == NKT_DBFUNDTYPE_UnsignedWord:
+            parsed_value = struct.unpack("<H", val)[0]
+        elif self.typ == NKT_DBFUNDTYPE_SignedDoubleWord:
+            parsed_value = struct.unpack("<i", val)[0]
+        elif self.typ == NKT_DBFUNDTYPE_UnsignedDoubleWord:
+            parsed_value = struct.unpack("<I", val)[0]
+        elif self.typ == NKT_DBFUNDTYPE_SignedQuadWord:
+            parsed_value = struct.unpack("<q", val)[0]
+        elif self.typ == NKT_DBFUNDTYPE_UnsignedQuadWord:
+            parsed_value = struct.unpack("<Q", val)[0]
+        elif self.typ == NKT_DBFUNDTYPE_Float:
+            parsed_value = struct.unpack("<f", val)[0]
+        elif self.typ == NKT_DBFUNDTYPE_Double:
+            parsed_value = struct.unpack("<d", val)[0]
+        elif self.typ == NKT_DBFUNDTYPE_LongDouble:
+            parsed_value = struct.unpack("<d", val)[0]
+        elif self.typ == NKT_DBFUNDTYPE_Void:
+            return
+        elif self.typ == NKT_DBFUNDTYPE_AnsiChar:
+            parsed_value = struct.unpack("<B", val)[0]
+        elif self.typ == NKT_DBFUNDTYPE_WideChar:
+            try:
+                parsed_value = val.decode("utf-16")
+            except Exception:
+                parsed_value = u"\x00"
+        self.val = parsed_value
 
     def get_val(self):
         return self.val
@@ -278,15 +279,11 @@ class BasicArgument(AbstractArgument):
         if self.val is not None and self.typ <= NKT_DBFUNDTYPE_LongDouble:
             return ("%x" % (self.val))
         elif self.val is not None and self.typ == NKT_DBFUNDTYPE_AnsiChar:
-            retval = ("%s" % chr(self.val))
-            return retval
+            return f"{chr(self.val)}"
         elif self.val is not None and self.typ == NKT_DBFUNDTYPE_WideChar:
-            return ("%s" % (self.val))
+            return f"{self.val}"
         elif self.typ == NKT_DBFUNDTYPE_Void:
-            if self.val is None:
-                return "(void)"
-            else:
-                return ("(void)%x" % (self.val))
+            return "(void)" if self.val is None else ("(void)%x" % (self.val))
         else:
             return "Error - BasicArgument not valid type"
 
@@ -435,10 +432,7 @@ class Typedef(AbstractArgument):
         return len(self.equivalent_arg)
 
     def get_val(self):
-        if self.equivalent_arg is not None:
-            return self.equivalent_arg.get_val()
-        else:
-            return None
+        return None if self.equivalent_arg is None else self.equivalent_arg.get_val()
 
     def dereference(self, argument_parser=None):
         if self.equivalent_arg is not None:
@@ -446,13 +440,12 @@ class Typedef(AbstractArgument):
 
     def __str__(self):
         if self.arg_name != "":
-            return "%s" % (self.equivalent_arg.__str__())
-        else:
-            try:
+            return f"{self.equivalent_arg.__str__()}"
+        try:
                 # use .__str__() instead of str() due to error while unpickling
-                return "%s" % self.equivalent_arg.__str__()
-            except Exception:
-                print (self.equivalent_arg.__class__.__name__)
+            return f"{self.equivalent_arg.__str__()}"
+        except Exception:
+            print (self.equivalent_arg.__class__.__name__)
 
 
 class Array(AbstractArgument):
@@ -525,9 +518,7 @@ class ParamStr(AbstractArgument):
         return self.addr
 
     def __len__(self):
-        if len(self.fields) == 0:
-            return 0
-        return len(self.fields) * len(self.fields[0])
+        return 0 if len(self.fields) == 0 else len(self.fields) * len(self.fields[0])
 
     def add_field(self, field):
         self.fields.append(field)
@@ -544,10 +535,7 @@ class ParamStr(AbstractArgument):
                 fi.dereference(argument_parser)
 
     def __str__(self):
-        ret_str = ""
-        for fi in self.fields:
-            ret_str += "%s" % (fi.__str__())
-        return ret_str
+        return "".join(f"{fi.__str__()}" for fi in self.fields)
 
 
 class Pointer(AbstractArgument):
@@ -628,8 +616,8 @@ class Pointer(AbstractArgument):
                 c.dereference(argument_parser)
                 val = c.get_val()
                 if (type(val) is int and val == 0) or \
-                   (type(val) is str and val[0] == "\x00") or \
-                   (type(val) is unicode and val[0] == u"\x00"):
+                       (type(val) is str and val[0] == "\x00") or \
+                       (type(val) is unicode and val[0] == u"\x00"):
                     break
                 deref_addr += len(c)
         else:
@@ -659,7 +647,7 @@ class Pointer(AbstractArgument):
         if self.dereferenced_type is None:
             return "None"
         else:
-            return "%s" % (self.dereferenced_type.__str__())
+            return f"{self.dereferenced_type.__str__()}"
 
 
 class Reference(AbstractArgument):
@@ -715,7 +703,7 @@ class Reference(AbstractArgument):
 
     def __str__(self):
         # return "r_%s: %s" % (self.arg_name,self.dereferenced_type.__str__())
-        return "%s" % (self.dereferenced_type.__str__())
+        return f"{self.dereferenced_type.__str__()}"
 
 
 class Enumeration(AbstractArgument):
@@ -761,10 +749,7 @@ class Enumeration(AbstractArgument):
         cur.execute("select EnumId,Id,Name,Value from EnumerationsValues where EnumId = %d and Value = %d" %
                     (self.typ, self.val))
         enum_val = cur.fetchone()
-        if enum_val is not None:
-            self.name = enum_val[2]
-        else:
-            self.name = None
+        self.name = enum_val[2] if enum_val is not None else None
 
     def get_val(self):
         return self.val
@@ -811,10 +796,9 @@ class ArgumentParser:
             self.__in_db = True
         else:
             self.__in_db = False
-            f = open("api_tracer_warnings.log", "a")
-            f.write("Function not present in DB: %s:%s:%x\n" %
-                    (mod, fun, addr))
-            f.close()
+            with open("api_tracer_warnings.log", "a") as f:
+                f.write("Function not present in DB: %s:%s:%x\n" %
+                        (mod, fun, addr))
 
     def in_db(self):
         return self.__in_db
@@ -850,104 +834,106 @@ class ArgumentParser:
             self.c.execute(
                 "select Id,Name,Size,Align,Flags from Structs where Id = %d" % (arg_typ))
             res = self.c.fetchone()
-            if res is not None:
-                new_struct = Struct(arg_name,
-                                    res[0],
-                                    res[1],
-                                    res[2],
-                                    res[3],
-                                    res[4],
-                                    pgd=self.pgd,
-                                    addr=addr,
-                                    val=val,
-                                    is_out=is_out,
-                                    arg_num=arg_num)
-
-                if addr is not None:
-                    self.c.execute("select StructId,Id,Name,Offset,Bits,Flags,TypeId,TypeClass" +
-                                   " from StructsMembers where StructId = %d order by Id ASC" % (arg_typ))
-                    sub_fields = self.c.fetchall()
-                    for sub_field in sub_fields:
-
-                        # Skip incorrect blank fields in the db
-                        if sub_field[3] == 0 and sub_field[1] > 1:
-                            continue
-
-                        offset = sub_field[3] / 8
-
-                        new_struct.add_field(offset,
-                                             self.generate_arg(sub_field[2],
-                                                               sub_field[6],
-                                                               sub_field[7],
-                                                               is_out, addr=addr +
-                                                               offset,
-                                                               val=None,
-                                                               arg_num=arg_num))
-                else:
-                    mwmon.printer("Unsupported type: A struct has been returned as" +
-                                  "return value (EAX/RAX), or as register parameter (RCX/RDX/R8/R9).")
-                return new_struct
-            else:
+            if res is None:
                 return None
 
+            new_struct = Struct(arg_name,
+                                res[0],
+                                res[1],
+                                res[2],
+                                res[3],
+                                res[4],
+                                pgd=self.pgd,
+                                addr=addr,
+                                val=val,
+                                is_out=is_out,
+                                arg_num=arg_num)
+
+            if addr is not None:
+                self.c.execute("select StructId,Id,Name,Offset,Bits,Flags,TypeId,TypeClass" +
+                               " from StructsMembers where StructId = %d order by Id ASC" % (arg_typ))
+                sub_fields = self.c.fetchall()
+                for sub_field in sub_fields:
+
+                    # Skip incorrect blank fields in the db
+                    if sub_field[3] == 0 and sub_field[1] > 1:
+                        continue
+
+                    offset = sub_field[3] / 8
+
+                    new_struct.add_field(offset,
+                                         self.generate_arg(sub_field[2],
+                                                           sub_field[6],
+                                                           sub_field[7],
+                                                           is_out, addr=addr +
+                                                           offset,
+                                                           val=None,
+                                                           arg_num=arg_num))
+            else:
+                mwmon.printer("Unsupported type: A struct has been returned as" +
+                              "return value (EAX/RAX), or as register parameter (RCX/RDX/R8/R9).")
+            return new_struct
         elif arg_class == NKT_DBOBJCLASS_Union:
             self.c.execute(
                 "select Id,Name,Size,Align,Flags from Unions where Id = %d" % (arg_typ))
             res = self.c.fetchone()
-            if res is not None:
-                new_union = Union(arg_name,
-                                  res[0],
-                                  res[1],
-                                  res[2],
-                                  res[3],
-                                  res[4],
-                                  pgd=self.pgd,
-                                  addr=addr,
-                                  val=val,
-                                  is_out=is_out,
-                                  arg_num=arg_num)
-
-                if addr is not None:
-                    self.c.execute("select UnionId,Id,Name,Offset,Bits,Flags,TypeId,TypeClass " +
-                                   "from UnionsMembers where UnionId =  %d order by Id ASC" % (arg_typ))
-                    sub_fields = self.c.fetchall()
-                    for sub_field in sub_fields:
-                        offset = sub_field[3] / 8
-                        new_union.add_field(offset,
-                                            self.generate_arg(sub_field[2],
-                                                              sub_field[6],
-                                                              sub_field[7],
-                                                              is_out,
-                                                              addr=addr +
-                                                              offset,
-                                                              arg_num=arg_num))
-                else:
-                    mwmon.printer("Unsupported type: A union has been returned as" +
-                                  "return value (EAX/RAX), or as register parameter (RCX/RDX/R8/R9).")
-
-                return new_union
-            else:
+            if res is None:
                 return None
 
+            new_union = Union(arg_name,
+                              res[0],
+                              res[1],
+                              res[2],
+                              res[3],
+                              res[4],
+                              pgd=self.pgd,
+                              addr=addr,
+                              val=val,
+                              is_out=is_out,
+                              arg_num=arg_num)
+
+            if addr is not None:
+                self.c.execute("select UnionId,Id,Name,Offset,Bits,Flags,TypeId,TypeClass " +
+                               "from UnionsMembers where UnionId =  %d order by Id ASC" % (arg_typ))
+                sub_fields = self.c.fetchall()
+                for sub_field in sub_fields:
+                    offset = sub_field[3] / 8
+                    new_union.add_field(offset,
+                                        self.generate_arg(sub_field[2],
+                                                          sub_field[6],
+                                                          sub_field[7],
+                                                          is_out,
+                                                          addr=addr +
+                                                          offset,
+                                                          arg_num=arg_num))
+            else:
+                mwmon.printer("Unsupported type: A union has been returned as" +
+                              "return value (EAX/RAX), or as register parameter (RCX/RDX/R8/R9).")
+
+            return new_union
         elif arg_class == NKT_DBOBJCLASS_Typedef:
             self.c.execute(
                 "select Id,Name,TypeId,TypeClass from TypeDefs where Id = %d" % (arg_typ))
             res = self.c.fetchone()
             if res is not None:
-                t = Typedef(arg_name,
-                            res[0],
-                            self.generate_arg(res[1],
-                                              res[2],
-                                              res[3],
-                                              is_out,
-                                              addr=addr,
-                                              val=val,
-                                              arg_num=arg_num),
-                            addr=addr,
-                            val=val,
-                            is_out=is_out,
-                            arg_num=arg_num)
-                return t
+                return Typedef(
+                    arg_name,
+                    res[0],
+                    self.generate_arg(
+                        res[1],
+                        res[2],
+                        res[3],
+                        is_out,
+                        addr=addr,
+                        val=val,
+                        arg_num=arg_num,
+                    ),
+                    addr=addr,
+                    val=val,
+                    is_out=is_out,
+                    arg_num=arg_num,
+                )
+
             else:
                 return None
 
@@ -955,91 +941,88 @@ class ArgumentParser:
             self.c.execute(
                 "select Id,Max,Size,Align,TypeId,TypeClass from Arrays where Id = %d" % (arg_typ))
             res = self.c.fetchone()
-            if res is not None:
-                the_arr = Array(arg_name,
-                                res[0],
-                                res[1],
-                                res[2],
-                                res[3],
-                                pgd=self.pgd,
-                                addr=addr,
-                                val=val,
-                                is_out=is_out,
-                                arg_num=arg_num)
-
-                if addr is not None:
-                    size_of_element = res[2] / res[1]
-                    for i in range(0, res[1]):
-                        the_arr.add_field(i,
-                                          self.generate_arg("",
-                                                            res[4],
-                                                            res[5],
-                                                            is_out,
-                                                            addr=addr,
-                                                            val=None,
-                                                            arg_num=arg_num))
-                        addr += size_of_element
-                else:
-                    mwmon.printer("Unsupported type: An array has been returned as" +
-                                  "return value (EAX/RAX), or as register parameter (RCX/RDX/R8/R9).")
-                return the_arr
-            else:
+            if res is None:
                 return None
 
+            the_arr = Array(arg_name,
+                            res[0],
+                            res[1],
+                            res[2],
+                            res[3],
+                            pgd=self.pgd,
+                            addr=addr,
+                            val=val,
+                            is_out=is_out,
+                            arg_num=arg_num)
+
+            if addr is not None:
+                size_of_element = res[2] / res[1]
+                for i in range(res[1]):
+                    the_arr.add_field(i,
+                                      self.generate_arg("",
+                                                        res[4],
+                                                        res[5],
+                                                        is_out,
+                                                        addr=addr,
+                                                        val=None,
+                                                        arg_num=arg_num))
+                    addr += size_of_element
+            else:
+                mwmon.printer("Unsupported type: An array has been returned as" +
+                              "return value (EAX/RAX), or as register parameter (RCX/RDX/R8/R9).")
+            return the_arr
         elif arg_class == NKT_DBOBJCLASS_Pointer:
             self.c.execute(
                 "select Id,Size,Align,TypeId,TypeClass from Pointers where Id = %d" % (arg_typ))
             res = self.c.fetchone()
-            if res is not None:
-                # We let the Pointer class determine if it should dereference
-                # or not the pointer
-                the_pointer = Pointer(arg_name,
-                                      arg_typ,
-                                      res[1],
-                                      res[2],
-                                      res[3],
-                                      res[4],
-                                      is_out,
-                                      pgd=self.pgd,
-                                      addr=addr,
-                                      val=val,
-                                      arg_num=arg_num)
-                return the_pointer
-
-            else:
+            if res is None:
                 return None
+
+            # We let the Pointer class determine if it should dereference
+            # or not the pointer
+            the_pointer = Pointer(arg_name,
+                                  arg_typ,
+                                  res[1],
+                                  res[2],
+                                  res[3],
+                                  res[4],
+                                  is_out,
+                                  pgd=self.pgd,
+                                  addr=addr,
+                                  val=val,
+                                  arg_num=arg_num)
+            return the_pointer
 
         elif arg_class == NKT_DBOBJCLASS_Reference:
             self.c.execute(
                 "select Id,Size,Align,TypeId,TypeClass from XReferences where Id = %d" % (arg_typ))
             res = self.c.fetchone()
-            if res is not None:
-                if addr is not None:
-                    # Dereference pointer. we can safely dereference it when the argument parser is created (function
-                    # call) because the address will not change when the
-                    # function returns if it is an output parameter.
-                    deref_addr = struct.unpack("<I", read(self.pgd, addr, 4))[0] if res[
-                        1] == 32 else struct.unpack("<Q", read(self.pgd, addr, 8))[0]
-                else:
-                    deref_addr = val
-                the_pointer = Reference(arg_name,
-                                        arg_typ,
-                                        res[1],
-                                        res[2],
-                                        self.generate_arg("",
-                                                          res[3],
-                                                          res[4],
-                                                          is_out,
-                                                          addr=deref_addr,
-                                                          arg_num=arg_num),
-                                        pgd=self.pgd,
-                                        addr=addr,
-                                        val=val,
-                                        arg_num=arg_num)
-                return the_pointer
-            else:
+            if res is None:
                 return None
 
+            if addr is not None:
+                # Dereference pointer. we can safely dereference it when the argument parser is created (function
+                # call) because the address will not change when the
+                # function returns if it is an output parameter.
+                deref_addr = struct.unpack("<I", read(self.pgd, addr, 4))[0] if res[
+                    1] == 32 else struct.unpack("<Q", read(self.pgd, addr, 8))[0]
+            else:
+                deref_addr = val
+            the_pointer = Reference(arg_name,
+                                    arg_typ,
+                                    res[1],
+                                    res[2],
+                                    self.generate_arg("",
+                                                      res[3],
+                                                      res[4],
+                                                      is_out,
+                                                      addr=deref_addr,
+                                                      arg_num=arg_num),
+                                    pgd=self.pgd,
+                                    addr=addr,
+                                    val=val,
+                                    arg_num=arg_num)
+            return the_pointer
         elif arg_class == NKT_DBOBJCLASS_Enumeration:
             self.c.execute(
                 "select Id,Name,Size,Align from Enumerations where Id = %d" % (arg_typ))
@@ -1078,10 +1061,9 @@ class ArgumentParser:
             addr = self.addr + 8 * 5
             reg_params = [self.cpu.RCX, self.cpu.RDX, self.cpu.R8, self.cpu.R9]
 
-        arg_num = 1
-        for param in params:
+        for arg_num, param in enumerate(params, start=1):
             # Unfold the argument
-            is_out = False if param[4] == 0 else True
+            is_out = param[4] != 0
             if TARGET_LONG_SIZE == 8 and arg_num <= 4:
                 arg = self.generate_arg(param[1], param[2], param[
                                         3], is_out, val=reg_params[arg_num - 1], arg_num=arg_num)
@@ -1090,7 +1072,6 @@ class ArgumentParser:
                     param[1], param[2], param[3], is_out, addr=addr, arg_num=arg_num)
                 addr += len(arg)
 
-            arg_num += 1
             # Point to next parameter in stack
             self.args.append(arg)
 
@@ -1111,14 +1092,9 @@ class ArgumentParser:
                     arg.dereference(self)
                     yield arg
         except Exception as e:
-            # There a few cases where the documented database might contain 
-            # errors, ending up in infinite recursion of dereference. We
-            # log this cases so that the user can correct theese entries
-            # the database
-            f = open("api_tracer_warnings.log", "a")
-            f.write("Recursion depth limit exceeded for: %s:%s:%x, Check database correctness.\n" %
-                    (self.mod, self.fun, self.addr))
-            f.close()
+            with open("api_tracer_warnings.log", "a") as f:
+                f.write("Recursion depth limit exceeded for: %s:%s:%x, Check database correctness.\n" %
+                        (self.mod, self.fun, self.addr))
 
     def get_in_args(self):
         try:
@@ -1127,25 +1103,15 @@ class ArgumentParser:
                     arg.dereference(self)
                     yield arg
         except Exception as e:
-            # There a few cases where the documented database might contain 
-            # errors, ending up in infinite recursion of dereference. We
-            # log this cases so that the user can correct theese entries
-            # the database
-            f = open("api_tracer_warnings.log", "a")
-            f.write("Recursion depth limit exceeded for: %s:%s:%x, Check database correctness.\n" %
-                    (self.mod, self.fun, self.addr))
-            f.close()
+            with open("api_tracer_warnings.log", "a") as f:
+                f.write("Recursion depth limit exceeded for: %s:%s:%x, Check database correctness.\n" %
+                        (self.mod, self.fun, self.addr))
 
     def get_ret(self):
         try:
             self.ret.dereference(self)
             return self.ret
         except Exception as e:
-            # There a few cases where the documented database might contain 
-            # errors, ending up in infinite recursion of dereference. We
-            # log this cases so that the user can correct theese entries
-            # the database
-            f = open("api_tracer_warnings.log", "a")
-            f.write("Recursion depth limit exceeded for: %s:%s:%x, Check database correctness.\n" %
-                    (self.mod, self.fun, self.addr))
-            f.close()
+            with open("api_tracer_warnings.log", "a") as f:
+                f.write("Recursion depth limit exceeded for: %s:%s:%x, Check database correctness.\n" %
+                        (self.mod, self.fun, self.addr))

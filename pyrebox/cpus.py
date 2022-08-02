@@ -122,7 +122,7 @@ class X86CPU:
         self.CR4 = 0
         self.CPU_INDEX = 0
         self.PC = 0
-        if len(args) > 0:
+        if args:
             self.EAX = args[0]
             self.ECX = args[1]
             self.EDX = args[2]
@@ -192,8 +192,7 @@ class X86CPU:
             self.PC = self.EIP
 
     def __str__(self):
-        result = ""
-        result += "========================================\n"
+        result = "" + "========================================\n"
         result += "               CPU %d\n" % self.CPU_INDEX
         result += "========================================\n"
         result += "EAX      0x%08x\n" % self.EAX

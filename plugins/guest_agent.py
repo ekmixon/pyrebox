@@ -155,8 +155,10 @@ class GuestAgentPlugin(object):
         """
             Cleanup, we no longer listen for process creation.
         """
-        if self.__status == GuestAgentPlugin.__AGENT_RUNNING or \
-            self.__status == GuestAgentPlugin.__AGENT_READY:
+        if self.__status in [
+            GuestAgentPlugin.__AGENT_RUNNING,
+            GuestAgentPlugin.__AGENT_READY,
+        ]:
             # This will remove the callbacks
             api.stop_monitoring_process(self.__agent_pgd)
             self.__agent_pgd = None
@@ -168,8 +170,10 @@ class GuestAgentPlugin(object):
             Cleanup, but we still listen for new processes, so a new agent can
             be started.
         """
-        if self.__status == GuestAgentPlugin.__AGENT_RUNNING or \
-            self.__status == GuestAgentPlugin.__AGENT_READY:
+        if self.__status in [
+            GuestAgentPlugin.__AGENT_RUNNING,
+            GuestAgentPlugin.__AGENT_READY,
+        ]:
             # This will remove the callbacks
             api.stop_monitoring_process(self.__agent_pgd)
             self.__agent_pgd = None
@@ -300,7 +304,7 @@ class GuestAgentPlugin(object):
         """
         self.__printer("LIST OF COMMANDS")
         self.__printer("================")
-        for i in range(0, len(self.__commands)):
+        for i in range(len(self.__commands)):
             self.__printer(
                 "    [%d] CMD: %s - %s" % (i, self.__get_command_name(self.__commands[i]["command"]),
                                            str(self.__commands[i]["meta"])))
@@ -332,17 +336,15 @@ class GuestAgentPlugin(object):
                     name = m["name"]
                     base = m["base"]
                     # size = m["size"]
-                    if name == target_mod_name or target_mod_name in name:
-                        if lowest_addr is None:
-                            lowest_addr = base
-                        elif base < lowest_addr:
-                            lowest_addr = base
-
+                    if (name == target_mod_name or target_mod_name in name) and (
+                        lowest_addr is None or base < lowest_addr
+                    ):
+                        lowest_addr = base
                 if self.__agent_buffer_offset is not None and \
-                    lowest_addr is not None:
+                        lowest_addr is not None:
 
                     self.__agent_buffer_address = lowest_addr + \
-                        self.__agent_buffer_offset
+                            self.__agent_buffer_offset
                     # Now, our agent is fully up and running
                     self.__status = GuestAgentPlugin.__AGENT_READY
                     # Now, we add the opcode hook and start monitoring the
@@ -353,7 +355,7 @@ class GuestAgentPlugin(object):
 
                     self.__cb.rm_callback("context_change_guest_agent")
         except Exception as e:
-            self.__printer("Exception occurred on context change callback: %s" % str(e))
+            self.__printer(f"Exception occurred on context change callback: {str(e)}")
 
     def __new_process_callback(self, params):
         """
@@ -364,23 +366,26 @@ class GuestAgentPlugin(object):
         name = params["name"]
         try:
             # If we already have a running agent, ignore it
-            if self.__status < GuestAgentPlugin.__AGENT_RUNNING:
-                # Use only the first 8 characters since the name could be truncated
-                if name is not None and name != "" and name in self.__agent_filename:
-                    self.__agent_pgd = pgd
-                    # Monitor context change to check we can get the base address
-                    # for the process main module
-                    self.__cb.add_callback(api.CallbackManager.CONTEXTCHANGE_CB, functools.partial(
-                        self.__context_change_callback, pgd, name), name="context_change_guest_agent")
-                    self.__cb.add_callback(
-                        api.CallbackManager.OPCODE_RANGE_CB, self.__opcode_range_callback,
-                        name="host_file_plugin_opcode_range",
-                        start_opcode=0x13f,
-                        end_opcode=0x13f)
-                    api.start_monitoring_process(pgd)
-                    self.__status = GuestAgentPlugin.__AGENT_RUNNING
+            if (
+                self.__status < GuestAgentPlugin.__AGENT_RUNNING
+                and name is not None
+                and name != ""
+                and name in self.__agent_filename
+            ):
+                self.__agent_pgd = pgd
+                # Monitor context change to check we can get the base address
+                # for the process main module
+                self.__cb.add_callback(api.CallbackManager.CONTEXTCHANGE_CB, functools.partial(
+                    self.__context_change_callback, pgd, name), name="context_change_guest_agent")
+                self.__cb.add_callback(
+                    api.CallbackManager.OPCODE_RANGE_CB, self.__opcode_range_callback,
+                    name="host_file_plugin_opcode_range",
+                    start_opcode=0x13f,
+                    end_opcode=0x13f)
+                api.start_monitoring_process(pgd)
+                self.__status = GuestAgentPlugin.__AGENT_RUNNING
         except Exception as e:
-            self.__printer("Exception occurred on create process callback: %s" % str(e))
+            self.__printer(f"Exception occurred on create process callback: {str(e)}")
 
     def __remove_process_callback(self, params):
         """
@@ -389,12 +394,14 @@ class GuestAgentPlugin(object):
         pid = params["pid"]
         pgd = params["pgd"]
         name = params["name"]
-        if self.__status == GuestAgentPlugin.__AGENT_RUNNING or \
-            self.__status == GuestAgentPlugin.__AGENT_READY:
-            if pgd == self.__agent_pgd:
-                self.__clean_opcode_callback()
-                self.__printer(
-                    "HostFilePlugin: Guest agent with PGD %x was killed, but you can start it again!" % (pgd))
+        if (
+            self.__status
+            in [GuestAgentPlugin.__AGENT_RUNNING, GuestAgentPlugin.__AGENT_READY]
+            and pgd == self.__agent_pgd
+        ):
+            self.__clean_opcode_callback()
+            self.__printer(
+                "HostFilePlugin: Guest agent with PGD %x was killed, but you can start it again!" % (pgd))
 
     def __check_buffer_validity(self, buf, size):
         """
@@ -457,7 +464,7 @@ class GuestAgentPlugin(object):
                 elif isinstance(cpu, X64CPU):
                     api.w_r(cpu_index, "RIP", cpu.RIP + 10)
         except Exception as e:
-            self.__printer("Exception occurred on opcode callback: %s" % str(e))
+            self.__printer(f"Exception occurred on opcode callback: {str(e)}")
 
     def __read_string(self, cpu_index, addr):
         """
@@ -479,7 +486,7 @@ class GuestAgentPlugin(object):
         TARGET_LONG_SIZE = api.get_os_bits() / 8
         array_ptr = vaddr
         strings_ptr = vaddr + TARGET_LONG_SIZE * (len(array) + 1)
-        for i, s in enumerate(array):
+        for s in array:
             api.w_va(pgd, array_ptr, struct.pack(
                 "<" + ("L" if TARGET_LONG_SIZE == 4 else "Q"), strings_ptr), TARGET_LONG_SIZE)
             api.w_va(pgd, strings_ptr, s + "\x00", len(s) + 1)
@@ -493,7 +500,7 @@ class GuestAgentPlugin(object):
         """
         array_ptr = vaddr
         for el in array:
-            api.w_va(pgd, array_ptr, el + " ", len(el) + 1)
+            api.w_va(pgd, array_ptr, f"{el} ", len(el) + 1)
             array_ptr += (len(el) + 1)
         # Terminating null character
         api.w_va(pgd, array_ptr, "\x00", 1)
@@ -608,21 +615,24 @@ class GuestAgentPlugin(object):
                 self.__file_descriptor_counter += 1
             else:
                 self.__printer(
-                    "HostFilesPlugin: The guest requested to open an invalid file %s" % fname)
+                    f"HostFilesPlugin: The guest requested to open an invalid file {fname}"
+                )
+
                 if isinstance(cpu, X86CPU):
                     api.w_r(cpu_index, "EAX", -1)
                 elif isinstance(cpu, X64CPU):
                     api.w_r(cpu_index, "RAX", -1)
         except KeyError:
-            self.__printer(
-                "HostFilesPlugin: Guest tried to read unknown file %s" % fname)
+            self.__printer(f"HostFilesPlugin: Guest tried to read unknown file {fname}")
             if isinstance(cpu, X86CPU):
                 api.w_r(cpu_index, "EAX", -1)
             elif isinstance(cpu, X64CPU):
                 api.w_r(cpu_index, "RAX", -1)
         except Exception as ex:
             self.__printer(
-                "HostFilesPlugin: Exception %s while opening file %s" % (str(ex), fname))
+                f"HostFilesPlugin: Exception {str(ex)} while opening file {fname}"
+            )
+
             if isinstance(cpu, X86CPU):
                 api.w_r(cpu_index, "EAX", -1)
             elif isinstance(cpu, X64CPU):
@@ -754,7 +764,9 @@ class GuestAgentPlugin(object):
 
         except Exception as ex:
             self.__printer(
-                "HostFilesPlugin: Exception %s while trying to write file name to guest" % (str(ex)))
+                f"HostFilesPlugin: Exception {str(ex)} while trying to write file name to guest"
+            )
+
             if isinstance(cpu, X86CPU):
                 api.w_r(cpu_index, "EAX", -1)
             elif isinstance(cpu, X64CPU):
@@ -801,7 +813,9 @@ class GuestAgentPlugin(object):
 
         except Exception as ex:
             self.__printer(
-                "HostFilesPlugin: Exception %s while trying to write file path to guest" % (str(ex)))
+                f"HostFilesPlugin: Exception {str(ex)} while trying to write file path to guest"
+            )
+
             if isinstance(cpu, X86CPU):
                 api.w_r(cpu_index, "EAX", -1)
             elif isinstance(cpu, X64CPU):
@@ -856,7 +870,9 @@ class GuestAgentPlugin(object):
 
         except Exception as ex:
             self.__printer(
-                "HostFilesPlugin: Exception %s while trying to write file args to guest" % (str(ex)))
+                f"HostFilesPlugin: Exception {str(ex)} while trying to write file args to guest"
+            )
+
             if isinstance(cpu, X86CPU):
                 api.w_r(cpu_index, "EAX", -1)
             elif isinstance(cpu, X64CPU):
@@ -886,13 +902,12 @@ class GuestAgentPlugin(object):
         # called" % (buf, size))
         if len(env) > 0:
 
+            env = ["{:s}={:s}".format(k, v) for k, v in env.items()]
             env_size = 0
-            if len(env) > 0:
-                env = ["{:s}={:s}".format(k, v) for k, v in env.items()]
-                env_size = sum(len(x) + 1 for x in env) + 1
-                if env_size > self.__agent_buffer_size:
-                    raise ValueError(
-                        "The size of the env variables should not exceed %d bytes" % self.__agent_buffer_size)
+            env_size = sum(len(x) + 1 for x in env) + 1
+            if env_size > self.__agent_buffer_size:
+                raise ValueError(
+                    "The size of the env variables should not exceed %d bytes" % self.__agent_buffer_size)
 
             try:
                 # Security check: the buffer should be located on the allowed
@@ -917,16 +932,17 @@ class GuestAgentPlugin(object):
 
             except Exception as ex:
                 self.__printer(
-                    "HostFilesPlugin: Exception %s while trying to write env vars to guest" % (str(ex)))
+                    f"HostFilesPlugin: Exception {str(ex)} while trying to write env vars to guest"
+                )
+
                 if isinstance(cpu, X86CPU):
                     api.w_r(cpu_index, "EAX", -1)
                 elif isinstance(cpu, X64CPU):
                     api.w_r(cpu_index, "RAX", -1)
-        else:
-            if isinstance(cpu, X86CPU):
-                api.w_r(cpu_index, "EAX", 0)
-            elif isinstance(cpu, X64CPU):
-                api.w_r(cpu_index, "RAX", 0)
+        elif isinstance(cpu, X86CPU):
+            api.w_r(cpu_index, "EAX", 0)
+        elif isinstance(cpu, X64CPU):
+            api.w_r(cpu_index, "RAX", 0)
 
     def __handle_host_request_exec_args_linux(self, cpu_index, cpu):
         """
@@ -980,7 +996,9 @@ class GuestAgentPlugin(object):
 
         except Exception as ex:
             self.__printer(
-                "HostFilesPlugin: Exception %s while trying to write file args to guest" % (str(ex)))
+                f"HostFilesPlugin: Exception {str(ex)} while trying to write file args to guest"
+            )
+
             if isinstance(cpu, X86CPU):
                 api.w_r(cpu_index, "EAX", -1)
             elif isinstance(cpu, X64CPU):
@@ -1038,16 +1056,17 @@ class GuestAgentPlugin(object):
 
             except Exception as ex:
                 self.__printer(
-                    "HostFilesPlugin: Exception %s while trying to write env vars to guest" % (str(ex)))
+                    f"HostFilesPlugin: Exception {str(ex)} while trying to write env vars to guest"
+                )
+
                 if isinstance(cpu, X86CPU):
                     api.w_r(cpu_index, "EAX", -1)
                 elif isinstance(cpu, X64CPU):
                     api.w_r(cpu_index, "RAX", -1)
-        else:
-            if isinstance(cpu, X86CPU):
-                api.w_r(cpu_index, "EAX", 0)
-            elif isinstance(cpu, X64CPU):
-                api.w_r(cpu_index, "RAX", 0)
+        elif isinstance(cpu, X86CPU):
+            api.w_r(cpu_index, "EAX", 0)
+        elif isinstance(cpu, X64CPU):
+            api.w_r(cpu_index, "RAX", 0)
 
 
 guest_agent = None

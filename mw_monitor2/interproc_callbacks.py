@@ -71,10 +71,8 @@ def read_parameters(cpu, num_params, long_size):
                 pp_debug("Could not read properly the parameters in interproc_callbacks.py at address %x - size %x" % (cpu.ESP, (num_params + 1)*4))
             else:
                 pp_debug("Could not read properly the parameters in interproc_callbacks.py at address %x - size %x" % (cpu.RSP, (num_params + 1)*4))
-        params = struct.unpack("<" + "I" * (1 + num_params), buff)
-        return params
+        return struct.unpack("<" + "I" * (1 + num_params), buff)
     elif long_size == 8:
-        params_regs = []
         params_stack = ()
 
         # Add the return address as parameter 0
@@ -84,8 +82,7 @@ def read_parameters(cpu, num_params, long_size):
             buff = "\x00" * 8
             pp_debug("Could not read properly the parameters in interproc_callbacks.py")
 
-        params_regs.append(struct.unpack("<Q", buff)[0])
-
+        params_regs = [struct.unpack("<Q", buff)[0]]
         if num_params >= 1:
             params_regs.append(cpu.RCX)
         if num_params >= 2:
@@ -104,7 +101,7 @@ def read_parameters(cpu, num_params, long_size):
             except:
                 buff = "\x00" * ((num_params + 5 - 4) * 8)
                 pp_debug("Could not read properly the parameters in interproc_callbacks.py")
-                
+
             params_stack = struct.unpack(
                 "<" + "Q" * (5 + num_params - 4), buff)
             params_stack = params_stack[5:]
@@ -207,11 +204,10 @@ def ntcreateprocessret(params,
         params["name"] = str(proc_obj.ImageFileName)
 
         interproc_start_monitoring_process(params)
-    else:
-        if TARGET_LONG_SIZE == 4: 
-            pp_error("Error while trying to retrieve EPROCESS for handle %x, PID %x, EAX: %x\n" % (proc_hdl, proc.get_pid(), cpu.EAX))
-        elif TARGET_LONG_SIZE == 8:
-            pp_error("Error while trying to retrieve EPROCESS for handle %x, PID %x, EAX: %x\n" % (proc_hdl, proc.get_pid(), cpu.RAX))
+    elif TARGET_LONG_SIZE == 4: 
+        pp_error("Error while trying to retrieve EPROCESS for handle %x, PID %x, EAX: %x\n" % (proc_hdl, proc.get_pid(), cpu.EAX))
+    elif TARGET_LONG_SIZE == 8:
+        pp_error("Error while trying to retrieve EPROCESS for handle %x, PID %x, EAX: %x\n" % (proc_hdl, proc.get_pid(), cpu.RAX))
 
     if update_vads:
         proc.update_vads()
@@ -369,11 +365,10 @@ def ntopenprocessret(params, cm, callback_name, proc_hdl_p, proc, update_vads, l
         params["name"] = str(proc_obj.ImageFileName)
 
         interproc_start_monitoring_process(params)
-    else:
-        if TARGET_LONG_SIZE == 4: 
-            pp_error("Error while trying to retrieve EPROCESS for handle %x, PID %x, EAX: %x\n" % (proc_hdl, proc.get_pid(), cpu.EAX))
-        elif TARGET_LONG_SIZE == 8:
-            pp_error("Error while trying to retrieve EPROCESS for handle %x, PID %x, EAX: %x\n" % (proc_hdl, proc.get_pid(), cpu.RAX))
+    elif TARGET_LONG_SIZE == 4: 
+        pp_error("Error while trying to retrieve EPROCESS for handle %x, PID %x, EAX: %x\n" % (proc_hdl, proc.get_pid(), cpu.EAX))
+    elif TARGET_LONG_SIZE == 8:
+        pp_error("Error while trying to retrieve EPROCESS for handle %x, PID %x, EAX: %x\n" % (proc_hdl, proc.get_pid(), cpu.RAX))
 
     if update_vads:
         proc.update_vads()
@@ -481,27 +476,23 @@ def ntwritevirtualmemory(params, cm, proc, update_vads, long_size, reverse=False
             "[!]  Could not obtain local proc, or it is not monitored\n")
         return
     else:
-        if reverse:
-            data = None
-            if interproc_config.interproc_text_log and interproc_config.interproc_text_log_handle is not None:
-                f = interproc_config.interproc_text_log_handle
+        if interproc_config.interproc_text_log and interproc_config.interproc_text_log_handle is not None:
+            f = interproc_config.interproc_text_log_handle
+            if reverse:
                 if TARGET_LONG_SIZE == 4:
                     f.write("[PID: %08x] NtReadVirtualMemory: PID: %x - Addr: %08x <-- PID: %x Addr: %08x / Size: %08x\n" %
                             (proc.get_pid(), local_proc.get_pid(), local_addr, remote_proc.get_pid(), remote_addr, size))
                 elif TARGET_LONG_SIZE == 8:
                     f.write("[PID: %08x] NtReadVirtualMemory: PID: %x - Addr: %16x <-- PID: %x Addr: %16x / Size: %16x\n" %
                             (proc.get_pid(), local_proc.get_pid(), local_addr, remote_proc.get_pid(), remote_addr, size))
-        else:
-            data = None
-            if interproc_config.interproc_text_log and interproc_config.interproc_text_log_handle is not None:
-                f = interproc_config.interproc_text_log_handle
-                if TARGET_LONG_SIZE == 4:
-                    f.write("[PID: %08x] NtWriteVirtualMemory: PID: %x - Addr: %08x --> PID: %x Addr: %08x / Size: %08x\n" %
-                            (proc.get_pid(), local_proc.get_pid(), local_addr, remote_proc.get_pid(), remote_addr, size))
-                elif TARGET_LONG_SIZE == 8:
-                    f.write("[PID: %08x] NtWriteVirtualMemory: PID: %x - Addr: %16x --> PID: %x Addr: %16x / Size: %16x\n" %
-                            (proc.get_pid(), local_proc.get_pid(), local_addr, remote_proc.get_pid(), remote_addr, size))
+            elif TARGET_LONG_SIZE == 4:
+                f.write("[PID: %08x] NtWriteVirtualMemory: PID: %x - Addr: %08x --> PID: %x Addr: %08x / Size: %08x\n" %
+                        (proc.get_pid(), local_proc.get_pid(), local_addr, remote_proc.get_pid(), remote_addr, size))
+            elif TARGET_LONG_SIZE == 8:
+                f.write("[PID: %08x] NtWriteVirtualMemory: PID: %x - Addr: %16x --> PID: %x Addr: %16x / Size: %16x\n" %
+                        (proc.get_pid(), local_proc.get_pid(), local_addr, remote_proc.get_pid(), remote_addr, size))
 
+        data = None
         inj = Injection(remote_proc, remote_addr,
                         local_proc, local_addr, size, data, reverse)
         local_proc.add_injection(inj)
@@ -681,16 +672,8 @@ def ntmapviewofsection_ret(params,
     # First, remove callback
     cm.rm_callback(callback_name)
 
-    if base_p != 0:
-        base = dereference_target_long(base_p, pgd, long_size)
-    else:
-        base = 0
-
-    if size_p != 0:
-        size = dereference_target_long(size_p, pgd, long_size)
-    else:
-        size = 0
-
+    base = dereference_target_long(base_p, pgd, long_size) if base_p != 0 else 0
+    size = dereference_target_long(size_p, pgd, long_size) if size_p != 0 else 0
     # Offset is always 8 bytes
     if offset_p != 0:
         try:
@@ -873,10 +856,13 @@ def ntunmapviewofsection(params, cm, proc, update_vads, long_size):
                 break
             elif task.UniqueProcessId == proc.get_pid() and task.ObjectTable.HandleTableList:
                 for handle in task.ObjectTable.handles():
-                    if handle.is_valid():
-                        if handle.HandleValue == proc_handle and handle.get_object_type() == "Process":
-                            proc_obj = handle.dereference_as("_EPROCESS")
-                            break
+                    if (
+                        handle.is_valid()
+                        and handle.HandleValue == proc_handle
+                        and handle.get_object_type() == "Process"
+                    ):
+                        proc_obj = handle.dereference_as("_EPROCESS")
+                        break
                 break
 
     mapping_proc = None
@@ -950,10 +936,13 @@ def ntvirtualprotect(params, cm, proc, update_vads, long_size):
                 break
             elif task.UniqueProcessId == proc.get_pid() and task.ObjectTable.HandleTableList:
                 for handle in task.ObjectTable.handles():
-                    if handle.is_valid():
-                        if handle.HandleValue == proc_handle and handle.get_object_type() == "Process":
-                            proc_obj = handle.dereference_as("_EPROCESS")
-                            break
+                    if (
+                        handle.is_valid()
+                        and handle.HandleValue == proc_handle
+                        and handle.get_object_type() == "Process"
+                    ):
+                        proc_obj = handle.dereference_as("_EPROCESS")
+                        break
                 break
 
     mapping_proc = None
@@ -1013,11 +1002,7 @@ def ntallocatevirtualmemory_ret(params,
     else:
         base = 0
 
-    if size_p != 0:
-        size = dereference_target_long(size_p, pgd, long_size)
-    else:
-        size = 0
-
+    size = dereference_target_long(size_p, pgd, long_size) if size_p != 0 else 0
     if interproc_config.interproc_text_log and interproc_config.interproc_text_log_handle is not None:
         f = interproc_config.interproc_text_log_handle
         if TARGET_LONG_SIZE == 4:
@@ -1085,10 +1070,13 @@ def ntallocatevirtualmemory(params,
                 break
             elif task.UniqueProcessId == proc.get_pid() and task.ObjectTable.HandleTableList:
                 for handle in task.ObjectTable.handles():
-                    if handle.is_valid():
-                        if handle.HandleValue == proc_handle and handle.get_object_type() == "Process":
-                            proc_obj = handle.dereference_as("_EPROCESS")
-                            break
+                    if (
+                        handle.is_valid()
+                        and handle.HandleValue == proc_handle
+                        and handle.get_object_type() == "Process"
+                    ):
+                        proc_obj = handle.dereference_as("_EPROCESS")
+                        break
                 break
 
     mapping_proc = None

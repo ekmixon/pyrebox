@@ -180,8 +180,7 @@ def find_ep(proc, proc_name):
                     ep = pe.OPTIONAL_HEADER.AddressOfEntryPoint
                     return (base + ep)
     except Exception as e:
-        mwmon.printer("Unable to run pefile on loaded module %s (%s)" % (proc_name, str(e)))
-        pass
+        mwmon.printer(f"Unable to run pefile on loaded module {proc_name} ({str(e)})")
     return None
 
 def ntdll_breakpoint_func(proc, params):
@@ -362,9 +361,7 @@ class VADRegion(object):
             initial_page_prot = 0
 
         nb_pages = self.size / VADRegion.PAGE_SIZE
-        for i in range(0, nb_pages):
-            self.permissions.append(initial_page_prot)
-
+        self.permissions.extend(initial_page_prot for _ in range(nb_pages))
         self.potentially_injected = False
 
         # Taken from volatility, (vadinfo plugin).
@@ -553,23 +550,16 @@ class Process:
 
             profile = conf_m.vol_profile
 
+            # We hook both, because although Kernel32 calls the "Ex" version, a
+            # program may call directy ZwCreateProcess
+            self.breakpoints[("ntdll.dll", "ZwCreateProcessEx")] = None
+            self.bp_funcs[("ntdll.dll", "ZwCreateProcessEx")] = (
+                ntcreateprocess, True and not mwmon.api_tracer and not mwmon.coverage)
+            self.breakpoints[("ntdll.dll", "ZwCreateProcess")] = None
+            self.bp_funcs[("ntdll.dll", "ZwCreateProcess")] = (
+                ntcreateprocess, True and not mwmon.api_tracer and not mwmon.coverage)
             # If before vista:
-            if "WinXP" in profile or "Win2003" in profile:
-                # We hook both, because although Kernel32 calls the "Ex" version, a
-                # program may call directy ZwCreateProcess
-                self.breakpoints[("ntdll.dll", "ZwCreateProcessEx")] = None
-                self.bp_funcs[("ntdll.dll", "ZwCreateProcessEx")] = (
-                    ntcreateprocess, True and not mwmon.api_tracer and not mwmon.coverage)
-                self.breakpoints[("ntdll.dll", "ZwCreateProcess")] = None
-                self.bp_funcs[("ntdll.dll", "ZwCreateProcess")] = (
-                    ntcreateprocess, True and not mwmon.api_tracer and not mwmon.coverage)
-            else:
-                self.breakpoints[("ntdll.dll", "ZwCreateProcessEx")] = None
-                self.bp_funcs[("ntdll.dll", "ZwCreateProcessEx")] = (
-                    ntcreateprocess, True and not mwmon.api_tracer and not mwmon.coverage)
-                self.breakpoints[("ntdll.dll", "ZwCreateProcess")] = None
-                self.bp_funcs[("ntdll.dll", "ZwCreateProcess")] = (
-                    ntcreateprocess, True and not mwmon.api_tracer and not mwmon.coverage)
+            if "WinXP" not in profile and "Win2003" not in profile:
                 # On Vista (and onwards), kernel32.dll no longer uses
                 # ZwCreateProcess/ZwCreateProcessEx (although these function remain
                 # in ntdll.dll. It Uses ZwCreateUserProcess.
@@ -621,14 +611,18 @@ class Process:
         elif (base, size) not in self.modules[name]:
             self.modules[name].append((base, size))
         # Update the (include/exclude addresses in apitracer)
-        if mwmon.exclude_modules is not None:
-            if name.lower() in mwmon.exclude_modules:
-                if (base, size) not in mwmon.exclude_modules_addrs:
-                    mwmon.exclude_modules_addrs.append((base, size))
-        if mwmon.exclude_origin_modules is not None:
-            if name.lower() in mwmon.exclude_origin_modules:
-                if (base, size) not in mwmon.exclude_origin_modules_addrs:
-                    mwmon.exclude_origin_modules_addrs.append((base, size))
+        if (
+            mwmon.exclude_modules is not None
+            and name.lower() in mwmon.exclude_modules
+            and (base, size) not in mwmon.exclude_modules_addrs
+        ):
+            mwmon.exclude_modules_addrs.append((base, size))
+        if (
+            mwmon.exclude_origin_modules is not None
+            and name.lower() in mwmon.exclude_origin_modules
+            and (base, size) not in mwmon.exclude_origin_modules_addrs
+        ):
+            mwmon.exclude_origin_modules_addrs.append((base, size))
 
     def locate_nearest_symbol(self, addr):
         pos = bisect.bisect_left(self.symbols, Symbol("", "", addr))
@@ -646,10 +640,14 @@ class Process:
         '''
         Get the VAD overlapping the call address
         '''
-        for vad in self.vads:
-            if vad.start <= addr and (vad.start + vad.size) > addr:
-                return vad
-        return None
+        return next(
+            (
+                vad
+                for vad in self.vads
+                if vad.start <= addr and (vad.start + vad.size) > addr
+            ),
+            None,
+        )
 
     def add_call(self, addr_from, addr_to, data):
         '''
@@ -661,9 +659,9 @@ class Process:
         if vad is None:
             self.update_vads()
             vad = self.get_overlapping_vad(addr_from)
-            if vad is None:
-                self.other_calls.append((addr_from, addr_to, data))
-                return
+        if vad is None:
+            self.other_calls.append((addr_from, addr_to, data))
+            return
         vad.add_call((addr_from, addr_to, data))
         self.all_calls.append((addr_from, addr_to, data))
 
@@ -721,33 +719,39 @@ class Process:
             if mod in self.modules:
                 for pair in self.modules[mod]:
                     # Update the (include/exclude addresses in apitracer)
-                    if mwmon.include_apis is not None:
-                        if (mod.lower(), fun.lower()) in mwmon.include_apis:
-                            if (pair[0] + addr) not in mwmon.include_apis_addrs:
-                                mwmon.include_apis_addrs.append(pair[0] + addr)
+                    if (
+                        mwmon.include_apis is not None
+                        and (mod.lower(), fun.lower()) in mwmon.include_apis
+                        and (pair[0] + addr) not in mwmon.include_apis_addrs
+                    ):
+                        mwmon.include_apis_addrs.append(pair[0] + addr)
 
-                    if mwmon.exclude_apis is not None:
-                        if (mod.lower(), fun.lower()) in mwmon.exclude_apis:
-                            if (pair[0] + addr) not in mwmon.exclude_apis_addrs:
-                                mwmon.exclude_apis_addrs.append(pair[0] + addr)
+                    if (
+                        mwmon.exclude_apis is not None
+                        and (mod.lower(), fun.lower()) in mwmon.exclude_apis
+                        and (pair[0] + addr) not in mwmon.exclude_apis_addrs
+                    ):
+                        mwmon.exclude_apis_addrs.append(pair[0] + addr)
 
                     bisect.insort(
                         self.symbols, Symbol(mod, fun, pair[0] + addr))
-                    if mwmon.interproc or mwmon.api_tracer or mwmon.dumper:
-                        # Add breakpoint if necessary
-                        if (mod, fun) in self.breakpoints and self.breakpoints[(mod, fun)] is None:
-                            f_callback = self.bp_funcs[(mod, fun)][0]
-                            update_vads = self.bp_funcs[(mod, fun)][1]
-                            callback = functools.partial(
-                                f_callback, pid=self.pid, proc=self, update_vads=update_vads)
-                            bp = mwmon.cm.add_callback(CallbackManager.INSN_BEGIN_CB,
-                                                       callback,
-                                                       name="api_bp_%x_%s" % (self.pid, fun),
-                                                       addr=pair[0] + addr,
-                                                       pgd=self.pgd)
-                            self.breakpoints[(mod, fun)] = (bp, pair[0] + addr)
-                            mwmon.printer("Adding breakpoint at %s:%s %x:%x from process with PID %x" %
-                                          (mod, fun, pair[0] + addr, self.pgd, self.pid))
+                    if (
+                        (mwmon.interproc or mwmon.api_tracer or mwmon.dumper)
+                        and (mod, fun) in self.breakpoints
+                        and self.breakpoints[(mod, fun)] is None
+                    ):
+                        f_callback = self.bp_funcs[(mod, fun)][0]
+                        update_vads = self.bp_funcs[(mod, fun)][1]
+                        callback = functools.partial(
+                            f_callback, pid=self.pid, proc=self, update_vads=update_vads)
+                        bp = mwmon.cm.add_callback(CallbackManager.INSN_BEGIN_CB,
+                                                   callback,
+                                                   name="api_bp_%x_%s" % (self.pid, fun),
+                                                   addr=pair[0] + addr,
+                                                   pgd=self.pgd)
+                        self.breakpoints[(mod, fun)] = (bp, pair[0] + addr)
+                        mwmon.printer("Adding breakpoint at %s:%s %x:%x from process with PID %x" %
+                                      (mod, fun, pair[0] + addr, self.pgd, self.pid))
 
     def update_vads(self):
         '''
@@ -769,10 +773,11 @@ class Process:
             modules = [mod.DllBase for mod in task.get_load_modules()]
             stacks = []
             for thread in task.ThreadListHead.list_of_type("_ETHREAD", "ThreadListEntry"):
-                teb = obj.Object("_TEB",
-                                 offset=thread.Tcb.Teb,
-                                 vm=task.get_process_address_space())
-                if teb:
+                if teb := obj.Object(
+                    "_TEB",
+                    offset=thread.Tcb.Teb,
+                    vm=task.get_process_address_space(),
+                ):
                     stacks.append(teb.NtTib.StackBase)
             for vad in task.VadRoot.traverse():
                 if vad is not None:
@@ -801,11 +806,9 @@ class Process:
                         # even if the ControlArea is not NULL, it is only meaningful
                         # for shared (non private) memory sections.
                         if vad.VadFlags.PrivateMemory != 1 and control_area:
-                            if control_area:
-                                file_object = vad.FileObject
-                                if file_object:
-                                    fileNameWithDevice = file_object.file_name_with_device(
-                                    )
+                            if file_object := vad.FileObject:
+                                fileNameWithDevice = file_object.file_name_with_device(
+                                )
                     except AttributeError:
                         pass
 
@@ -862,84 +865,82 @@ class Process:
         '''
         self.update_from_peb()
 
-        f = open("%s_%x" % (file_name, self.pid), "w")
+        with open("%s_%x" % (file_name, self.pid), "w") as f:
+            f.write("BASIC INFORMATION\n")
+            f.write("=================\n\n")
 
-        f.write("BASIC INFORMATION\n")
-        f.write("=================\n\n")
+            f.write("Process name: %s\n" % self.proc_name)
+            f.write("CR3: %x\n" % self.pgd)
+            f.write("PID: %x\n" % self.pid)
+            f.write("Nb of modules: %d\n" % len(self.modules))
+            f.write("Commandline: %s\n" % self.commandline)
+            f.write("Current directory: %s\n" % self.current_directory)
+            f.write("Image path: %s\n" % self.image_path)
+            f.write("Target long size: %d\n" % self.TARGET_LONG_SIZE)
 
-        f.write("Process name: %s\n" % self.proc_name)
-        f.write("CR3: %x\n" % self.pgd)
-        f.write("PID: %x\n" % self.pid)
-        f.write("Nb of modules: %d\n" % len(self.modules))
-        f.write("Commandline: %s\n" % self.commandline)
-        f.write("Current directory: %s\n" % self.current_directory)
-        f.write("Image path: %s\n" % self.image_path)
-        f.write("Target long size: %d\n" % self.TARGET_LONG_SIZE)
+            f.write("\nMODULE LIST\n")
+            f.write("===========\n\n")
 
-        f.write("\nMODULE LIST\n")
-        f.write("===========\n\n")
+            vads = self.vads
+            syms = self.symbols
+            included_vads = []
+            for mod in self.modules:
+                f.write("\n%s\n" % mod)
+                f.write(("-" * len(mod)) + "\n")
+                mod_vads = []
+                mod_syms = []
+                for addr_s in self.modules[mod]:
+                    if self.TARGET_LONG_SIZE == 4:
+                        f.write("0x%08x - %08x\n" % addr_s)
+                    elif self.TARGET_LONG_SIZE == 8:
+                        f.write("0x%016x - %016x\n" % addr_s)
+                    mod_vads.extend(
+                        filter(lambda x: x.start >= addr_s[0] and (x.start < (addr_s[0] + addr_s[1])), vads))
+                    mod_syms.extend(
+                        filter(lambda x: x.addr >= addr_s[0] and (x.addr < (addr_s[0] + addr_s[1])), syms))
+                for v in mod_vads:
+                    f.write("    %s\n" % (str(v)))
+                    included_vads.append(v)
+                f.write("    Nb of symbols: %d\n" % len(mod_syms))
 
-        vads = self.vads
-        syms = self.symbols
-        included_vads = []
-        for mod in self.modules:
-            f.write("\n%s\n" % mod)
-            f.write(("-" * len(mod)) + "\n")
-            mod_vads = []
-            mod_syms = []
-            for addr_s in self.modules[mod]:
+            f.write("\nOTHER VADS\n")
+            f.write("===========\n\n")
+
+            for v in vads:
+                if v not in included_vads:
+                    f.write("    %s\n" % (str(v)))
+
+            f.write("\nINJECTIONS\n")
+            f.write("==========\n\n")
+
+            f.write("Nb of injections: %d\n\n" % (len(self.injections)))
+
+            for inj in self.injections:
+                f.write(str(inj) + "\n")
+
+            f.write("\nFILE OPERATIONS\n")
+            f.write("===============\n\n")
+
+            f.write("Nb of file operations: %d\n\n" % (len(self.file_operations)))
+
+            for op in self.file_operations:
+                f.write(str(op) + "\n")
+
+            f.write("\nSECTION MAPS\n")
+            f.write("============\n\n")
+
+            f.write("Nb of section maps: %d\n\n" % (len(self.section_maps)))
+
+            for smap in self.section_maps:
                 if self.TARGET_LONG_SIZE == 4:
-                    f.write("0x%08x - %08x\n" % addr_s)
+                    out_str = "%08x(%08x)" % (smap.base, smap.size)
                 elif self.TARGET_LONG_SIZE == 8:
-                    f.write("0x%016x - %016x\n" % addr_s)
-                mod_vads.extend(
-                    filter(lambda x: x.start >= addr_s[0] and (x.start < (addr_s[0] + addr_s[1])), vads))
-                mod_syms.extend(
-                    filter(lambda x: x.addr >= addr_s[0] and (x.addr < (addr_s[0] + addr_s[1])), syms))
-            for v in mod_vads:
-                f.write("    %s\n" % (str(v)))
-                included_vads.append(v)
-            f.write("    Nb of symbols: %d\n" % len(mod_syms))
+                    out_str = "%16x(%16x)" % (smap.base, smap.size)
 
-        f.write("\nOTHER VADS\n")
-        f.write("===========\n\n")
-
-        for v in vads:
-            if v not in included_vads:
-                f.write("    %s\n" % (str(v)))
-
-        f.write("\nINJECTIONS\n")
-        f.write("==========\n\n")
-
-        f.write("Nb of injections: %d\n\n" % (len(self.injections)))
-
-        for inj in self.injections:
-            f.write(str(inj) + "\n")
-
-        f.write("\nFILE OPERATIONS\n")
-        f.write("===============\n\n")
-
-        f.write("Nb of file operations: %d\n\n" % (len(self.file_operations)))
-
-        for op in self.file_operations:
-            f.write(str(op) + "\n")
-
-        f.write("\nSECTION MAPS\n")
-        f.write("============\n\n")
-
-        f.write("Nb of section maps: %d\n\n" % (len(self.section_maps)))
-
-        for smap in self.section_maps:
-            if self.TARGET_LONG_SIZE == 4:
-                out_str = "%08x(%08x)" % (smap.base, smap.size)
-            elif self.TARGET_LONG_SIZE == 8:
-                out_str = "%16x(%16x)" % (smap.base, smap.size)
-
-            if smap.section.backing_file is not None:
-                out_str += " %s" % (str(smap.section.backing_file))
-            out_str += "\n"
-            f.write(out_str)
-        f.close()
+                if smap.section.backing_file is not None:
+                    out_str += f" {str(smap.section.backing_file)}"
+                out_str += "\n"
+                f.write(out_str)
 
 
 class Injection:
@@ -980,8 +981,7 @@ class FileRead(FileOperation, object):
         super(FileRead, self).__init__(file_inst, proc, offset, size, data)
 
     def __str__(self):
-        res = "File Read: %s" % super(FileRead, self).__str__()
-        return res
+        return f"File Read: {super(FileRead, self).__str__()}"
 
 
 class FileWrite(FileOperation, object):
@@ -990,8 +990,7 @@ class FileWrite(FileOperation, object):
         super(FileWrite, self).__init__(file_inst, proc, offset, size, data)
 
     def __str__(self):
-        res = "File Write: %s" % super(FileWrite, self).__str__()
-        return res
+        return f"File Write: {super(FileWrite, self).__str__()}"
 
 
 class File:
@@ -1091,14 +1090,17 @@ class Section:
             from volatility.obj import Pointer
 
             # on winxp file_obj is volatility.obj.Pointer with .target being _FILE_OBJECT
-            if not (type(file_obj) is Pointer and type(file_obj.dereference()) is _FILE_OBJECT):
+            if (
+                type(file_obj) is not Pointer
+                or type(file_obj.dereference()) is not _FILE_OBJECT
+            ):
                 from volatility.plugins.overlays.windows.windows import _EX_FAST_REF
                 if type(file_obj) is _EX_FAST_REF:
                     # on newer volatility profiles, FilePointer is _EX_FAST_REF, needs deref
                     file_obj = file_obj.dereference_as("_FILE_OBJECT")
                 else:
                     raise TypeError("The type for self.segment.ControlArea.FilePointer in Section" + \
-                                    "class does not match _FILE_OBJECT or _EX_FAST_REF: %r (type %r)" % (file_obj, type(file_obj)))
+                                        "class does not match _FILE_OBJECT or _EX_FAST_REF: %r (type %r)" % (file_obj, type(file_obj)))
 
             for fi in mwmon.data.files:
                 if fi.file_name == str(file_obj.FileName):
@@ -1109,7 +1111,7 @@ class Section:
             if self.backing_file is None:
                 self.backing_file = File(str(file_obj.FileName))
                 mwmon.data.files.append(self.backing_file)
-        
+
         self.unpickled = False
         self.offset = self.section_object.obj_offset
 
@@ -1128,16 +1130,10 @@ class Section:
         self.unpickled = True
 
     def get_object(self):
-        if self.unpickled:
-            return None
-        else:
-            return self.section_object
+        return None if self.unpickled else self.section_object
 
     def get_offset(self):
-        if self.unpickled:
-            return self.offset
-        else:
-            return self.section_object.obj_offset
+        return self.offset if self.unpickled else self.section_object.obj_offset
 
     def is_cow(self):
         return self.is_cow

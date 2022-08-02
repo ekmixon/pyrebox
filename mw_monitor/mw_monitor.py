@@ -55,7 +55,7 @@ def new_process(params):
 
     main_proc = mwmon.data.procs[0]
     if main_proc.get_proc_name() is not None and (main_proc.get_proc_name() in name or name in main_proc.get_proc_name()):
-        mwmon.printer("Starting monitoring process %s" % name)
+        mwmon.printer(f"Starting monitoring process {name}")
         main_proc.set_pgd(pgd)
         main_proc.set_pid(pid)
         if mwmon.api_tracer and not mwmon.api_tracer_light_mode:

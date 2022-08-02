@@ -29,16 +29,11 @@ import struct
 def read_coverage(f_in):
     data = f_in.read()
     blocks = {}
-    i = 0
     total_len = len(data)
-    while i < total_len:
+    for i in range(0, total_len, 16):
         addr = struct.unpack("<Q", data[i:i + 8])[0]
         size = struct.unpack("<Q", data[i + 8:i + 16])[0]
-        i += 16
-        if addr in blocks:
-            if size >= blocks[addr]:
-                blocks[addr] = size
-        else:
+        if addr in blocks and size >= blocks[addr] or addr not in blocks:
             blocks[addr] = size
     return blocks
 

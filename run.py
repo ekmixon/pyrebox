@@ -250,11 +250,13 @@ if __name__ == "__main__":
     parser.add_argument("--autorun_config", help="Path to autorun configuration file")
     args = parser.parse_args()
 
-    start_pyrebox(vm_image = args.image if args.image else VM_IMAGE,
-                vm_snapshot = args.snapshot if args.snapshot else VM_SNAPSHOT,
-                pyrebox_path = args.path if args.path else PYREBOX_PATH, 
-                ram = args.ram if args.ram else RAM,
-                timeout_analysis = int(args.timeout) if args.timeout else TIMEOUT,
-                config = args.config if args.config else CONFIG_PATH,
-                autorun_config = args.autorun_config if args.autorun_config else AUTORUN_CONF_PATH,
-                std_log_file = "pyrebox_run.log")
+    start_pyrebox(
+        vm_image=args.image or VM_IMAGE,
+        vm_snapshot=args.snapshot or VM_SNAPSHOT,
+        pyrebox_path=args.path or PYREBOX_PATH,
+        ram=args.ram or RAM,
+        timeout_analysis=int(args.timeout) if args.timeout else TIMEOUT,
+        config=args.config or CONFIG_PATH,
+        autorun_config=args.autorun_config or AUTORUN_CONF_PATH,
+        std_log_file="pyrebox_run.log",
+    )

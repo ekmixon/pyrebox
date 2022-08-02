@@ -114,11 +114,10 @@ class Module:
 def import_module(module_name):
     global MODULE_COUNTER
     try:
-        already_imported = False
-        for mod in modules:
-            if modules[mod].get_module_name() == module_name:
-                already_imported = True
-                break
+        already_imported = any(
+            modules[mod].get_module_name() == module_name for mod in modules
+        )
+
         if not already_imported:
             MODULE_COUNTER += 1
             modules[MODULE_COUNTER] = Module(MODULE_COUNTER, module_name)
@@ -151,7 +150,7 @@ def unload_module(_id):
             pp_warning("[*]  The module number specified (%d) has not been imported\n" % _id)
             pp_warning("[*]  Possible ids:")
             for i in modules:
-                pp_warning("    %s - %s" % (str(i),str(type(i))))
+                pp_warning(f"    {str(i)} - {str(type(i))}")
     except Exception as e:
         pp_error("[!] Could not unload python module due to exception\n")
         pp_error("    %s\n" % str(e))
@@ -165,10 +164,14 @@ def list_modules():
     pp_print(str(t) + "\n")
 
 def get_loaded_modules():
-    mods = []
-    for mod in modules:
-        mods.append({"module_handle": mod, "module_name": modules[mod].get_module_name(), "is_loaded": modules[mod].is_loaded()})
-    return mods
+    return [
+        {
+            "module_handle": mod,
+            "module_name": modules[mod].get_module_name(),
+            "is_loaded": modules[mod].is_loaded(),
+        }
+        for mod in modules
+    ]
 
 def pyrebox_shell():
     finished = False
@@ -280,7 +283,7 @@ def init_plugins():
         pp_debug("[*] Initializing scripts...\n")
         # Locate python modules that should be loaded by default
         for (module, enable) in conf_m.config.items("MODULES"):
-            if enable.strip().lower() == "true" or enable.strip().lower() == "yes":
+            if enable.strip().lower() in ["true", "yes"]:
                 import_module(module)
 
         pp_debug("[*] Finished python module initialization\n")

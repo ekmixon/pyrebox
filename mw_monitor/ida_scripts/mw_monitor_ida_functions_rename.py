@@ -56,21 +56,25 @@ def populate_tree(treemodel, calls, filter_fname=None, filter_dllname=None, filt
     treemodel.removeRows(0, treemodel.rowCount())
 
     for (addr_from, addr_to) in calls:
-        if filter_addr_from is not None:
-            if not fnmatch.fnmatch(("%x" % addr_from).lower(), filter_addr_from):
-                continue
+        if filter_addr_from is not None and not fnmatch.fnmatch(
+            ("%x" % addr_from).lower(), filter_addr_from
+        ):
+            continue
 
         data = calls[(addr_from, addr_to)]
         for call in data:
-            if filter_fname is not None:
-                if not fnmatch.fnmatch(call.fun.lower(), filter_fname):
-                    continue
-            if filter_dllname is not None:
-                if not fnmatch.fnmatch(call.mod.lower(), filter_dllname):
-                    continue
-            if filter_return_addr is not None:
-                if not fnmatch.fnmatch(("%x" % call.ret_addr).lower(), filter_return_addr):
-                    continue
+            if filter_fname is not None and not fnmatch.fnmatch(
+                call.fun.lower(), filter_fname
+            ):
+                continue
+            if filter_dllname is not None and not fnmatch.fnmatch(
+                call.mod.lower(), filter_dllname
+            ):
+                continue
+            if filter_return_addr is not None and not fnmatch.fnmatch(
+                ("%x" % call.ret_addr).lower(), filter_return_addr
+            ):
+                continue
 
             func_item = QtGui.QStandardItem(call.fun)
             font = QtGui.QFont()
@@ -81,20 +85,19 @@ def populate_tree(treemodel, calls, filter_fname=None, filter_dllname=None, filt
             args = sorted(call.in_args + call.out_args)
             for arg in args:
                 if arg.is_output_arg():
-                    first = QtGui.QStandardItem("%s" % arg.get_arg_name())
-                    second = QtGui.QStandardItem("%s" % (arg.__str__()))
+                    first = QtGui.QStandardItem(f"{arg.get_arg_name()}")
+                    second = QtGui.QStandardItem(f"{arg.__str__()}")
                     first.setBackground(QtGui.QColor(255, 193, 37, 127))
                     second.setBackground(QtGui.QColor(255, 193, 37, 127))
-                    func_item.appendRow([first, second])
                 else:
-                    first = QtGui.QStandardItem("%s" % arg.get_arg_name())
-                    second = QtGui.QStandardItem("%s" % (arg.__str__()))
+                    first = QtGui.QStandardItem(f"{arg.get_arg_name()}")
+                    second = QtGui.QStandardItem(f"{arg.__str__()}")
                     first.setBackground(QtGui.QColor(164, 211, 238, 127))
                     second.setBackground(QtGui.QColor(164, 211, 238, 127))
-                    func_item.appendRow([first, second])
+                func_item.appendRow([first, second])
             if call.ret is not None and call.ret is not "":
-                first = QtGui.QStandardItem("%s" % call.ret.get_arg_name())
-                second = QtGui.QStandardItem("%s" % (call.ret.__str__()))
+                first = QtGui.QStandardItem(f"{call.ret.get_arg_name()}")
+                second = QtGui.QStandardItem(f"{call.ret.__str__()}")
                 first.setBackground(QtGui.QColor(240, 128, 128, 127))
                 second.setBackground(QtGui.QColor(240, 128, 128, 127))
                 func_item.appendRow([first, second])
@@ -226,14 +229,10 @@ class ShowLoadFuncDialog(QtWidgets.QDialog):
     def load_functions(self):
         # Load the file with the functions, executed in a thread
         try:
-            f_in = open(self.file_name, "rb")
-            data = pickle.load(f_in)
-            f_in.close()
+            with open(self.file_name, "rb") as f_in:
+                data = pickle.load(f_in)
             if not self.stopped:
-                if type(data) is list:
-                    self.procs = data
-                else:
-                    self.procs = data.procs
+                self.procs = data if type(data) is list else data.procs
         except Exception:
             # If something goes wrong, report it, and do not load procs
             self.procs = None
@@ -364,7 +363,7 @@ class PyREBoxFunctionsFormClass(idaapi.PluginForm):
                         for call in self.addrs[proc][(addr_from, addr_to)]:
                             call_addr = idc.PrevHead(call.ret_addr)
                             mnemonic = idc.GetMnem(call_addr)
-                            if mnemonic == "jmp" or mnemonic == "call":
+                            if mnemonic in ["jmp", "call"]:
                                 addr_to_rename = idc.GetOperandValue(call_addr, 0)
                                 if idaapi.isLoaded(addr_to_rename):
                                     idc.MakeName(addr_to_rename, call.fun)
@@ -397,19 +396,17 @@ class PyREBoxFunctionsFormClass(idaapi.PluginForm):
                     self.addrs[proc][(addr_from, addr_to)].append(data)
 
             # Update combo with the pids for the processes
-            proc_pids = []
-            for proc in self.procs:
-                proc_pids.append(proc.__str__())
+            proc_pids = [proc.__str__() for proc in self.procs]
             self.combo_pids.addItems(proc_pids)
 
             # Populate the function tree for the currently selected process
             # (default process)
             pid = self.get_combo_pid()
-            if self.procs is not None:
-                for proc in self.procs:
-                    if proc.pid == pid:
-                        populate_tree(self.treemodel, self.addrs[proc])
-                        break
+        if self.procs is not None:
+            for proc in self.procs:
+                if proc.pid == pid:
+                    populate_tree(self.treemodel, self.addrs[proc])
+                    break
 
     def load_file(self):
         '''
@@ -448,14 +445,30 @@ class PyREBoxFunctionsFormClass(idaapi.PluginForm):
                     break
 
     def filter_edited(self):
-        filter_fname = None if self.filter_fname_lineedit.text().strip(
-        ) == "" else "*%s*" % self.filter_fname_lineedit.text().strip().lower()
-        filter_dllname = None if self.filter_dll_lineedit.text().strip(
-        ) == "" else "*%s*" % self.filter_dll_lineedit.text().strip().lower()
-        filter_addr_from = None if self.filter_caller_lineedit.text().strip(
-        ) == "" else "*%s*" % self.filter_caller_lineedit.text().strip().lower()
-        filter_return_addr = None if self.filter_return_lineedit.text().strip(
-        ) == "" else "*%s*" % self.filter_return_lineedit.text().strip().lower()
+        filter_fname = (
+            None
+            if self.filter_fname_lineedit.text().strip() == ""
+            else f"*{self.filter_fname_lineedit.text().strip().lower()}*"
+        )
+
+        filter_dllname = (
+            None
+            if self.filter_dll_lineedit.text().strip() == ""
+            else f"*{self.filter_dll_lineedit.text().strip().lower()}*"
+        )
+
+        filter_addr_from = (
+            None
+            if self.filter_caller_lineedit.text().strip() == ""
+            else f"*{self.filter_caller_lineedit.text().strip().lower()}*"
+        )
+
+        filter_return_addr = (
+            None
+            if self.filter_return_lineedit.text().strip() == ""
+            else f"*{self.filter_return_lineedit.text().strip().lower()}*"
+        )
+
         # Populate the function tree for the currently selected process
         # (default process)
         pid = self.get_combo_pid()
@@ -636,7 +649,6 @@ class PyREBoxFunctionsFormClass(idaapi.PluginForm):
             idaapi.detach_action_from_menu(
                 'Edit/PyREBox/Show function arguments...', 'pyrebox:show_funcs')
             self.hooks.is_closed = True
-            pass
         except Exception:
             traceback.print_exc()
 
